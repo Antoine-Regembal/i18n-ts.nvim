@@ -228,7 +228,19 @@ opts = {
 ╰─ :w save · <CR> save & close · q cancel ────╯
 ```
 
-Each line holds only the value, so every Vim motion works. `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`. Adding or removing lines is refused.
+Each line holds only the value: the locale label isn't text you can edit. The float keeps exactly one line per locale. Anything that would add or remove a line (`dd`, `ggdG`, `J`, a multi-line paste…) is rolled back at once, without losing your other edits, and `u` still undoes your earlier changes. Inside the float:
+
+| Key | Action |
+| --- | --- |
+| `dd` | Clear the value (yanked to the register) |
+| `<Tab>` / `<S-Tab>` | Next / previous locale (normal and insert mode) |
+| `<CR>` in insert mode | Next locale |
+| `o`, `O`, `J` | Disabled |
+| `:w` | Save |
+| `<CR>` in normal mode | Save and close |
+| `q` / `<Esc>` | Close without saving |
+
+`:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
 
 With a translation provider set, writing the float also fills every locale still empty, translated from the default locale. Type the default locale's value, `:w`, and the other locales are written too.
 

@@ -75,7 +75,10 @@ local function refill(buf)
   for _, l in ipairs(s.locales) do
     table.insert(lines, to_line(s.project.store:get(s.key, l)))
   end
+  local undolevels = vim.bo[buf].undolevels
+  vim.bo[buf].undolevels = -1
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].undolevels = undolevels
   vim.bo[buf].modified = false
   decorate(buf)
 end
@@ -184,6 +187,68 @@ function M.locales(buf)
   return sessions[buf] and sessions[buf].locales
 end
 
+--- Keeps exactly one line per locale: any change that adds or removes lines is rolled back to the last valid state.
+local function check_structure(buf)
+  local s = sessions[buf]
+  if not s or not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  s.pending = false
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  if #lines == #s.locales then
+    s.snapshot = lines
+    return
+  end
+  local win = s.win and vim.api.nvim_win_is_valid(s.win) and s.win
+  local row = win and vim.api.nvim_win_get_cursor(win)[1] or 1
+  -- Outside insert mode, undo drops the change from history, so `u` still reaches earlier edits.
+  if not vim.fn.mode():match("^[iR]") then
+    vim.api.nvim_buf_call(buf, function()
+      pcall(vim.cmd, "silent undo")
+    end)
+  end
+  if not vim.deep_equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), s.snapshot) then
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, s.snapshot)
+  end
+  decorate(buf)
+  if win then
+    row = math.min(math.max(row, 1), #s.locales)
+    vim.api.nvim_win_set_cursor(win, { row, #s.snapshot[row] })
+  end
+end
+
+local function guard(buf)
+  local s = sessions[buf]
+  s.snapshot = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  vim.api.nvim_buf_attach(buf, false, {
+    on_lines = function()
+      if not sessions[buf] then
+        return true
+      end
+      if not s.pending then
+        s.pending = true
+        vim.schedule(function()
+          check_structure(buf)
+        end)
+      end
+    end,
+  })
+end
+
+local function move(buf, delta)
+  local s = sessions[buf]
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  row = (row - 1 + delta) % #s.locales + 1
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+  vim.api.nvim_win_set_cursor(0, { row, vim.fn.mode() == "i" and #line or 0 })
+end
+
+local function clear_line(buf)
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  vim.fn.setreg(vim.v.register, vim.api.nvim_get_current_line())
+  vim.api.nvim_buf_set_text(buf, row - 1, 0, row - 1, #vim.api.nvim_get_current_line(), { "" })
+end
+
 --- Opens the editor float for `key`; returns the buffer.
 function M.open(project, key)
   local store = project.store
@@ -217,7 +282,7 @@ function M.open(project, key)
     title_pos = "center",
   }
   if vim.fn.has("nvim-0.10") == 1 then
-    win_opts.footer = " :w save · <CR> save & close · q cancel "
+    win_opts.footer = " :w save · <CR> save & close · <Tab> next · q cancel "
     win_opts.footer_pos = "center"
   end
   local win = vim.api.nvim_open_win(buf, true, win_opts)
@@ -237,9 +302,37 @@ function M.open(project, key)
       sessions[buf] = nil
     end,
   })
-  local map = function(lhs, fn)
-    vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true })
+  guard(buf)
+  local map = function(lhs, fn, modes)
+    vim.keymap.set(modes or "n", lhs, fn, { buffer = buf, nowait = true })
   end
+  local noop = function() end
+  for _, lhs in ipairs({ "o", "O", "J", "gJ" }) do
+    map(lhs, noop)
+  end
+  map("dd", function()
+    clear_line(buf)
+  end)
+  map("<Tab>", function()
+    move(buf, 1)
+  end, { "n", "i" })
+  map("<S-Tab>", function()
+    move(buf, -1)
+  end, { "n", "i" })
+  map("<CR>", function()
+    move(buf, 1)
+  end, "i")
+  local function at_start(key)
+    return function()
+      return vim.api.nvim_win_get_cursor(0)[2] == 0 and "" or vim.keycode(key)
+    end
+  end
+  for _, key in ipairs({ "<BS>", "<C-h>", "<C-w>", "<C-u>" }) do
+    vim.keymap.set("i", key, at_start(key), { buffer = buf, expr = true, replace_keycodes = false })
+  end
+  vim.keymap.set("i", "<Del>", function()
+    return vim.api.nvim_win_get_cursor(0)[2] >= #vim.api.nvim_get_current_line() and "" or vim.keycode("<Del>")
+  end, { buffer = buf, expr = true, replace_keycodes = false })
   map("q", function()
     M.close(buf)
   end)
