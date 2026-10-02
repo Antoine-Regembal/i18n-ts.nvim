@@ -1,0 +1,22 @@
+{
+  "common": {
+    "actions": {
+      "save": "Speichern",
+      "cancel": "Abbrechen",
+      "delete": "Löschen"
+    }
+  },
+  "cart": {
+    "title": "Dein Warenkorb",
+    "items": "{count} Artikel | {count} Artikel",
+    "total": "Summe: {amount}",
+    "checkout": "Zur Kasse",
+    "continue_shopping": "Weiter einkaufen",
+    "empty": "Dein Warenkorb ist leer"
+  },
+  "account": {
+    "sign_in": "Anmelden",
+    "sign_out": "Abmelden",
+    "profile": "Mein Profil"
+  }
+}

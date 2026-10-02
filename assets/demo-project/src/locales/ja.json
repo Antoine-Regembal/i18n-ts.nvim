@@ -1,0 +1,21 @@
+{
+  "common": {
+    "actions": {
+      "save": "保存",
+      "cancel": "キャンセル",
+      "delete": "削除"
+    }
+  },
+  "cart": {
+    "title": "カート",
+    "items": "{count} 点",
+    "total": "合計: {amount}",
+    "checkout": "レジに進む",
+    "empty": "カートは空です"
+  },
+  "account": {
+    "sign_in": "ログイン",
+    "sign_out": "ログアウト",
+    "profile": "マイプロフィール"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "common": {
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    }
+  },
+  "cart": {
+    "title": "Your cart",
+    "items": "{count} item | {count} items",
+    "total": "Total: {amount}",
+    "checkout": "Proceed to checkout",
+    "continue_shopping": "Continue shopping",
+    "empty": "Your cart is empty"
+  },
+  "account": {
+    "sign_in": "Sign in",
+    "sign_out": "Sign out",
+    "profile": "My profile"
+  }
+}

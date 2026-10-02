@@ -1,0 +1,22 @@
+{
+  "common": {
+    "actions": {
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "delete": "Supprimer"
+    }
+  },
+  "cart": {
+    "title": "Votre panier",
+    "items": "{count} article | {count} articles",
+    "total": "Total : {amount}",
+    "checkout": "Passer la commande",
+    "continue_shopping": "Continuer mes achats",
+    "empty": "Votre panier est vide"
+  },
+  "account": {
+    "sign_in": "Se connecter",
+    "sign_out": "Se déconnecter",
+    "profile": "Mon profil"
+  }
+}

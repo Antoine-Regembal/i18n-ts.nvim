@@ -2,6 +2,8 @@
 
 See your translations where you use them. A fast, dependency-free Neovim plugin for TypeScript / JavaScript projects using JSON translation files: vue-i18n, i18next / react-i18next, next-intl, nuxt-i18n, or your own `t()`.
 
+![Translations next to every t() call, locale switch, all locales, go to definition](assets/inline.gif)
+
 ## Features
 
 - Translation shown next to every `t('key')`, `$t("key")`, `i18n.global.t(...)` call, for the visible lines only
@@ -235,7 +237,17 @@ opts = {
 | `:I18n toggle` | Hide / show translations and diagnostics |
 | `:I18n reload` | Forget every project and re-read the configuration and files |
 
+### Searching and removing keys
+
+![Key picker with file preview, jump to definition, remove a key from every locale](assets/picker.gif)
+
+### Completion
+
+![Key completion inside t() with blink.cmp, every locale in the documentation](assets/completion.gif)
+
 ### Editing translations
+
+![Edit a key in every locale from one float](assets/edit.gif)
 
 `:I18n edit` opens a float with one line per locale, the default locale first:
 
@@ -283,7 +295,9 @@ Type the default locale's value, then `<CR>` to save and close. The translation 
 
 ### Machine translation
 
-Machine translation is off until you set `translate.provider`. When it's on, the key and its default-locale text are sent to the provider you choose. API keys are only ever read from environment variables, never from your config or a project file.
+![Type the default locale, save and close: every other locale is translated in the background](assets/translate.gif)
+
+The GIF uses a demo provider with canned answers. Machine translation is off until you set `translate.provider`. When it's on, the key and its default-locale text are sent to the provider you choose. API keys are only ever read from environment variables, never from your config or a project file.
 
 #### Choosing a provider
 
@@ -532,6 +546,8 @@ Lua API: `require("i18n-ts").definition()` returns `false` when there is no key 
 - Namespace scoping from `useTranslation('ns')` / `useTranslations('ns')` is not resolved yet.
 
 ## Development
+
+The GIFs are recorded with [VHS](https://github.com/charmbracelet/vhs) from `assets/*.tape`. They use a fictional project (`assets/demo-project`), a canned demo translation provider and `assets/demo-init.lua` for the captions. Each tape works on a fresh copy in `.tmp/demo`. Regenerate one with `vhs assets/edit.tape`.
 
 ```sh
 nvim --headless -l tests/run.lua

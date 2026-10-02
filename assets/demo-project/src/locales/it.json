@@ -1,0 +1,22 @@
+{
+  "common": {
+    "actions": {
+      "save": "Salva",
+      "cancel": "Annulla",
+      "delete": "Elimina"
+    }
+  },
+  "cart": {
+    "title": "Il tuo carrello",
+    "items": "{count} articolo | {count} articoli",
+    "total": "Totale: {amount}",
+    "checkout": "Vai alla cassa",
+    "continue_shopping": "Continua lo shopping",
+    "empty": "Il tuo carrello è vuoto"
+  },
+  "account": {
+    "sign_in": "Accedi",
+    "sign_out": "Esci",
+    "profile": "Il mio profilo"
+  }
+}
