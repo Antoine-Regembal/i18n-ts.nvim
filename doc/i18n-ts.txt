@@ -101,7 +101,10 @@ them, the
 inline preview of the key shows a "translating…" indicator until the result
 is written, and locales filled in meanwhile are never overwritten.
 "claude_code" runs `claude -p` and reuses the Claude Code login, with no API
-key. For "anthropic" and "deepl", API keys are read from the environment
+key. It keeps one warm session per project, started and warmed up when the
+project opens, so a translation takes ~3.5 s instead of ~15 s
+(`claude_code.session`, `prewarm`, `max_turns`, `idle_timeout_ms`). A failed
+session falls back to one-shot calls. For "anthropic" and "deepl", API keys are read from the environment
 variable named by `api_key_env` and passed to curl on stdin. `translate`
 cannot be set from `.i18n-ts.json`.
 

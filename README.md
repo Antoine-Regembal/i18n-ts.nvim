@@ -147,7 +147,17 @@ require("i18n-ts").setup({
     provider = nil, -- nil (off), "claude_code", "anthropic", "deepl", "command", or function(request, callback)
     auto = true, -- translate the empty locales when the editor float is closed
     context = nil, -- extra hint for the model, e.g. "Medical software used by doctors."
-    claude_code = { cmd = "claude", model = "claude-haiku-4-5", max_budget_usd = 0.05, extra_args = {} },
+    claude_code = { -- see "Machine translation" for every option
+      cmd = "claude",
+      model = "claude-haiku-4-5",
+      session = true,
+      prewarm = true,
+      max_turns = 20,
+      idle_timeout_ms = 600000,
+      request_timeout_ms = 60000,
+      max_budget_usd = 0.50,
+      extra_args = {},
+    },
     anthropic = {
       model = "claude-haiku-4-5",
       api_key_env = "ANTHROPIC_API_KEY",
@@ -278,10 +288,45 @@ The source text and the key are sent to the provider you choose. Nothing is sent
 **Claude Code** (no API key: reuses the login of the [Claude Code](https://claude.com/claude-code) CLI, subscription or API key, by running `claude -p` headless):
 
 ```lua
-translate = { provider = "claude_code" } -- claude-haiku-4-5, capped at $0.05 per call
+translate = { provider = "claude_code" } -- claude-haiku-4-5
 ```
 
-It runs with no tools, no MCP servers, no saved session, and from Neovim's cache directory so your project's `CLAUDE.md` isn't added to the prompt. Your user-level `~/.claude/CLAUDE.md` is still loaded. Each call starts the CLI, so expect a few seconds per key. Options: `translate.claude_code = { cmd = "claude", model = "claude-haiku-4-5", max_budget_usd = 0.05, extra_args = {} }`.
+Starting the CLI for every key is slow, so the plugin keeps **one warm `claude` session per project**:
+
+- **When it starts:** as soon as you open a file of a project with translation files. A tiny warm-up message finishes the CLI's start-up in the background, before you ask for anything.
+- **How requests flow:** every translation is a new message in that session, queued one at a time.
+- **Bounded context:** the session restarts after `max_turns` translations, so its context stays small, and stops after `idle_timeout_ms` without use, or when Neovim quits.
+- **Failure handling:** if the session crashes or can't start, that translation is retried with a one-shot `claude -p`, and the next one restarts the session.
+
+Measured with Claude Haiku 4.5, translating one string into 5 locales:
+
+| | Latency |
+| --- | --- |
+| One-shot `claude -p` per key (`session = false`) | ~15 s |
+| Warm session | ~3.5 s |
+
+Each session turn costs about $0.004, and the warm-up costs about the same once per project.
+
+It runs with no tools, no MCP servers, no saved session, and from Neovim's cache directory so your project's `CLAUDE.md` isn't added to the prompt. Your user-level `~/.claude/CLAUDE.md` is still loaded.
+
+```lua
+translate = {
+  provider = "claude_code",
+  claude_code = {
+    cmd = "claude", -- or a list, e.g. { "npx", "claude" }
+    model = "claude-haiku-4-5",
+    session = true, -- false: one `claude -p` per translation
+    prewarm = true, -- start the session when a project opens; "process": start it without the warm-up message
+    max_turns = 20, -- restart the session after this many translations
+    idle_timeout_ms = 600000, -- stop it after 10 minutes without a translation
+    request_timeout_ms = 60000,
+    max_budget_usd = 0.50, -- `--max-budget-usd`: per session (per call when session = false)
+    extra_args = {},
+  },
+}
+```
+
+`:I18n info` and `:checkhealth i18n-ts` show the session state, its turns and its uptime.
 
 **Claude API** (one HTTPS request per key for every locale, using structured JSON output):
 

@@ -58,9 +58,18 @@ M.defaults = {
     claude_code = {
       cmd = "claude",
       model = "claude-haiku-4-5",
-      -- Hard cap per call, in USD (`--max-budget-usd`); nil to disable.
-      max_budget_usd = 0.05,
+      -- Hard cap in USD (`--max-budget-usd`): per session with `session`, per call without; nil to disable.
+      max_budget_usd = 0.50,
       extra_args = {},
+      -- Keep one warm `claude` process per project instead of starting the CLI for every key (~1.5 s vs ~5 s).
+      session = true,
+      -- Start it when a project is opened: true also sends a tiny warm-up message, "process" only starts it.
+      prewarm = true,
+      -- Restart the session after this many translations, to keep its context small.
+      max_turns = 20,
+      -- Stop the session after this long without a translation.
+      idle_timeout_ms = 10 * 60 * 1000,
+      request_timeout_ms = 60 * 1000,
     },
     anthropic = {
       model = "claude-haiku-4-5",

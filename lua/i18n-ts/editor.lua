@@ -230,6 +230,13 @@ local function refill(buf)
   decorate(buf)
 end
 
+--- Every locale but the default one: the locale set of the project's translation session.
+function M.other_locales(store)
+  return vim.tbl_filter(function(l)
+    return l ~= store.default_locale
+  end, store.locales)
+end
+
 local function missing_locales(store, key)
   local targets = {}
   for _, l in ipairs(store.locales) do
@@ -287,7 +294,13 @@ function M.translate_key(project, key, targets, on_done, opts)
   end
   project.pending[key] = { targets = targets, started = vim.uv.now() }
   require("i18n-ts").track_pending(project)
-  local req = { key = key, source_locale = store.default_locale, source = source, targets = targets }
+  local req = {
+    key = key,
+    source_locale = store.default_locale,
+    source = source,
+    targets = targets,
+    schema_locales = M.other_locales(store),
+  }
   translate.run(tcfg, req, function(err, result, locale_errors)
     project.pending[key] = nil
     local written, errors = {}, vim.deepcopy(locale_errors)

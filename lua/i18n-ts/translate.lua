@@ -84,12 +84,16 @@ local function only_targets(result, targets)
   return out
 end
 
-local function target_schema(targets)
+local function target_schema(targets, optional)
   local properties = {}
   for _, l in ipairs(targets) do
     properties[l] = { type = "string" }
   end
-  return { type = "object", properties = properties, required = targets, additionalProperties = false }
+  local schema = { type = "object", properties = properties, additionalProperties = false }
+  if not optional then
+    schema.required = targets
+  end
+  return schema
 end
 
 function M.anthropic_body(acfg, req, context)
@@ -152,61 +156,108 @@ function providers.anthropic(cfg, req, cb)
   end)
 end
 
---- Runs the Claude Code CLI headless, so it uses its own login (subscription or API key) instead of a key here.
-function providers.claude_code(cfg, req, cb)
+--- Name of the Claude Code executable, for messages.
+function M.claude_name(ccfg)
+  return type(ccfg.cmd) == "table" and tostring(ccfg.cmd[1]) or tostring(ccfg.cmd)
+end
+
+--- `claude -p` argv shared by one-shot calls and sessions; `ccfg.cmd` may be a string or a list.
+function M.claude_argv(cfg, schema, system_suffix, extra)
   local ccfg = cfg.claude_code
-  local cmd = {
-    ccfg.cmd,
+  local cmd = type(ccfg.cmd) == "table" and vim.deepcopy(ccfg.cmd) or { ccfg.cmd }
+  vim.list_extend(cmd, {
     "-p",
     "--model",
     ccfg.model,
-    "--output-format",
-    "json",
     "--json-schema",
-    vim.json.encode(target_schema(req.targets)),
+    vim.json.encode(schema),
     "--system-prompt",
-    SYSTEM_PROMPT .. (cfg.context and (" Context: " .. cfg.context) or ""),
+    SYSTEM_PROMPT .. (system_suffix or "") .. (cfg.context and (" Context: " .. cfg.context) or ""),
     "--tools",
     "",
     "--strict-mcp-config",
     "--no-session-persistence",
-  }
+  })
   if ccfg.max_budget_usd then
     vim.list_extend(cmd, { "--max-budget-usd", tostring(ccfg.max_budget_usd) })
   end
   vim.list_extend(cmd, ccfg.extra_args or {})
-  local stdin = vim.json.encode({
+  return vim.list_extend(cmd, extra or {})
+end
+
+function M.claude_message(req)
+  return vim.json.encode({
     key = req.key,
     source_locale = req.source_locale,
     source = req.source,
     targets = req.targets,
   })
+end
+
+--- Translations from a Claude Code `result` object (one-shot output or session event).
+function M.parse_claude_result(out, req, name)
+  if out.is_error then
+    return ("%s: %s"):format(name, tostring(out.result or out.subtype or "error"))
+  end
+  local result = out.structured_output
+  if type(result) ~= "table" and type(out.result) == "string" then
+    local parsed_ok, parsed = pcall(vim.json.decode, out.result)
+    result = parsed_ok and parsed or nil
+  end
+  if type(result) ~= "table" then
+    return "no translation in the Claude Code answer"
+  end
+  return nil, only_targets(result, req.targets)
+end
+
+--- One `claude -p` per request: no state, ~5 s per call (CLI start-up included).
+local function claude_oneshot(cfg, req, cb)
+  local name = M.claude_name(cfg.claude_code)
+  local cmd = M.claude_argv(cfg, target_schema(req.targets), nil, { "--output-format", "json" })
   -- A neutral cwd keeps the project's CLAUDE.md out of the prompt.
-  local ok, err = pcall(M.runner, cmd, { stdin = stdin, text = true, cwd = vim.fn.stdpath("cache") }, function(res)
+  local opts = { stdin = M.claude_message(req), text = true, cwd = vim.fn.stdpath("cache") }
+  local ok, err = pcall(M.runner, cmd, opts, function(res)
     local decoded_ok, out = pcall(vim.json.decode, res.stdout or "", { luanil = { object = true, array = true } })
     if not decoded_ok or type(out) ~= "table" then
       local detail = vim.trim(res.stderr or "")
       return cb(
-        ("unexpected output from %s (exit %d)%s"):format(ccfg.cmd, res.code, detail ~= "" and (": " .. detail) or "")
+        ("unexpected output from %s (exit %d)%s"):format(name, res.code, detail ~= "" and (": " .. detail) or "")
       )
     end
-    if out.is_error then
-      return cb(("%s: %s"):format(ccfg.cmd, tostring(out.result or out.subtype or "error")))
-    end
-    local result = out.structured_output
-    if type(result) ~= "table" and type(out.result) == "string" then
-      local parsed_ok, parsed = pcall(vim.json.decode, out.result)
-      result = parsed_ok and parsed or nil
-    end
-    if type(result) ~= "table" then
-      return cb("no translation in the Claude Code answer")
-    end
-    cb(nil, only_targets(result, req.targets))
+    cb(M.parse_claude_result(out, req, name))
   end)
   if not ok then
-    cb(("cannot run %s: %s"):format(ccfg.cmd, tostring(err)))
+    cb(("cannot run %s: %s"):format(name, tostring(err)))
   end
 end
+
+--- Runs the Claude Code CLI headless, so it uses its own login (subscription or API key) instead of a key here.
+--- By default through a warm session (`claude_session.lua`), falling back to one-shot calls when it fails.
+function providers.claude_code(cfg, req, cb)
+  if cfg.claude_code.session == false then
+    return claude_oneshot(cfg, req, cb)
+  end
+  require("i18n-ts.claude_session").request(cfg, req, function(err, event, fallback)
+    if fallback then
+      return claude_oneshot(cfg, req, cb)
+    end
+    if err then
+      return cb(err)
+    end
+    cb(M.parse_claude_result(event, req, M.claude_name(cfg.claude_code)))
+  end)
+end
+
+--- Starts the warm Claude Code session of a project ahead of the first translation.
+function M.prewarm(cfg, locales)
+  local ccfg = cfg.claude_code
+  if cfg.provider ~= "claude_code" or ccfg.session == false or ccfg.prewarm == false or #locales == 0 then
+    return
+  end
+  require("i18n-ts.claude_session").prewarm(cfg, locales, { warmup = ccfg.prewarm ~= "process" })
+end
+
+M.target_schema = target_schema
 
 local deepl_targets = { en = "EN-US", pt = "PT-PT", cmn = "ZH-HANS", zh = "ZH-HANS" }
 

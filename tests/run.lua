@@ -621,7 +621,10 @@ test("the empty locales are translated when the float is closed, not on :w", fun
   assert(vim.wait(2000, function()
     return p.store:get("greet", "de") ~= nil
   end))
-  eq(requests[1], { key = "greet", source_locale = "en", source = "Hello", targets = { "de" } })
+  eq(
+    requests[1],
+    { key = "greet", source_locale = "en", source = "Hello", targets = { "de" }, schema_locales = { "de", "fr" } }
+  )
   eq(p.store:get("greet", "de"), "Hallo")
   eq(p.store:get("greet", "fr"), "Salut")
   vim.fn.delete(p.root, "rf")
@@ -1105,7 +1108,11 @@ test("anthropic retries once on 429 then succeeds", function()
   vim.env.I18N_TS_TEST_KEY = nil
 end)
 
-local claude_cfg = vim.tbl_deep_extend("force", config.defaults.translate, { provider = "claude_code" })
+local claude_cfg = vim.tbl_deep_extend(
+  "force",
+  config.defaults.translate,
+  { provider = "claude_code", claude_code = { session = false } }
+)
 
 local function arg_after(cmd, flag)
   for i, a in ipairs(cmd) do
@@ -1147,6 +1154,137 @@ test("claude_code falls back to a JSON result string and reports CLI errors", fu
     assert(run_sync(claude_cfg, req):find("Not logged in", 1, true))
     assert(run_sync(claude_cfg, req):find("unexpected output", 1, true))
   end)
+end)
+
+-- claude_code session
+
+local session = require("i18n-ts.claude_session")
+local fake_claude = { "nvim", "-l", fixtures .. "/fake_claude.lua" }
+
+local function session_cfg(overrides)
+  return vim.tbl_deep_extend("force", config.defaults.translate, {
+    provider = "claude_code",
+    claude_code = vim.tbl_extend("force", { cmd = fake_claude, prewarm = false }, overrides or {}),
+  })
+end
+
+local function spawn_counter()
+  local file = vim.fn.tempname()
+  vim.env.FAKE_CLAUDE_SPAWNS = file
+  return function()
+    return vim.fn.filereadable(file) == 1 and #vim.fn.readfile(file) or 0
+  end, function()
+    vim.fn.delete(file)
+    vim.env.FAKE_CLAUDE_SPAWNS = nil
+  end
+end
+
+local function session_req(source, targets)
+  return { key = "k", source_locale = "en", source = source, targets = targets or { "fr", "de" } }
+end
+
+test("claude_code session: one warm process answers several requests in order", function()
+  local spawns, cleanup = spawn_counter()
+  local cfg = session_cfg()
+  for i, source in ipairs({ "One", "Two", "Three" }) do
+    local err, result = run_sync(cfg, session_req(source))
+    eq(err, nil)
+    eq(result, { fr = "fr:" .. source, de = "de:" .. source })
+    eq(session.status(cfg)[1].turns, i)
+  end
+  eq(spawns(), 1)
+  session.stop_all()
+  cleanup()
+end)
+
+test("claude_code session: concurrent requests are queued on the same process", function()
+  local spawns, cleanup = spawn_counter()
+  vim.env.FAKE_CLAUDE_DELAY_MS = "50"
+  local cfg = session_cfg()
+  local results = {}
+  for _, source in ipairs({ "A", "B", "C" }) do
+    translate.run(cfg, session_req(source, { "fr" }), function(err, result)
+      table.insert(results, err or result.fr)
+    end)
+  end
+  assert(vim.wait(5000, function()
+    return #results == 3
+  end))
+  eq(results, { "fr:A", "fr:B", "fr:C" })
+  eq(spawns(), 1)
+  vim.env.FAKE_CLAUDE_DELAY_MS = nil
+  session.stop_all()
+  cleanup()
+end)
+
+test("claude_code session: recycled after max_turns", function()
+  local spawns, cleanup = spawn_counter()
+  local cfg = session_cfg({ max_turns = 2 })
+  for _, source in ipairs({ "1", "2", "3" }) do
+    eq(run_sync(cfg, session_req(source)), nil)
+  end
+  eq(spawns(), 2)
+  session.stop_all()
+  cleanup()
+end)
+
+test("claude_code session: stopped when idle", function()
+  local cfg = session_cfg({ idle_timeout_ms = 100 })
+  eq(run_sync(cfg, session_req("x")), nil)
+  eq(session.status(cfg)[1].state, "ready")
+  assert(vim.wait(2000, function()
+    return #session.status(cfg) == 0 or session.status(cfg)[1].state == "stopped"
+  end))
+  session.stop_all()
+end)
+
+test("claude_code session: a crash falls back to one-shot, the next request restarts it", function()
+  local spawns, cleanup = spawn_counter()
+  vim.env.FAKE_CLAUDE_CRASH_ON = "2"
+  local cfg = session_cfg()
+  eq(select(2, run_sync(cfg, session_req("first"))), { fr = "fr:first", de = "de:first" })
+  local err, result = run_sync(cfg, session_req("second"))
+  eq(err, nil)
+  eq(result, { fr = "fr:second", de = "de:second" })
+  vim.env.FAKE_CLAUDE_CRASH_ON = nil
+  eq(select(2, run_sync(cfg, session_req("third"))), { fr = "fr:third", de = "de:third" })
+  eq(spawns(), 3)
+  session.stop_all()
+  cleanup()
+end)
+
+test("claude_code session: a request times out and the process is restarted", function()
+  vim.env.FAKE_CLAUDE_DELAY_MS = "1500"
+  local cfg = session_cfg({ request_timeout_ms = 200 })
+  local err = run_sync(cfg, session_req("slow"))
+  assert(err and err:find("timed out", 1, true), tostring(err))
+  vim.env.FAKE_CLAUDE_DELAY_MS = nil
+  eq(select(2, run_sync(cfg, session_req("fast"))), { fr = "fr:fast", de = "de:fast" })
+  session.stop_all()
+end)
+
+test("claude_code session: prewarm starts the process and sends a warm-up turn", function()
+  local spawns, cleanup = spawn_counter()
+  local cfg = session_cfg({ prewarm = true })
+  translate.prewarm(cfg, { "fr", "de" })
+  assert(vim.wait(3000, function()
+    return (session.status(cfg)[1] or {}).turns == 1
+  end))
+  eq(spawns(), 1)
+  eq(select(2, run_sync(cfg, session_req("after"))), { fr = "fr:after", de = "de:after" })
+  eq(spawns(), 1)
+  session.stop_all()
+  cleanup()
+end)
+
+test("claude_code session = false always uses one-shot calls", function()
+  local spawns, cleanup = spawn_counter()
+  local cfg = session_cfg({ session = false })
+  eq(select(2, run_sync(cfg, session_req("a"))), { fr = "fr:a", de = "de:a" })
+  eq(select(2, run_sync(cfg, session_req("b"))), { fr = "fr:b", de = "de:b" })
+  eq(spawns(), 2)
+  eq(#session.status(cfg), 0)
+  cleanup()
 end)
 
 test("command provider gets the request on stdin and returns its JSON", function()

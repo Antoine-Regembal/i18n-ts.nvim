@@ -51,10 +51,30 @@ function M.check()
     )
   )
   if t.provider == "claude_code" then
-    if vim.fn.executable(t.claude_code.cmd) == 1 then
-      h.ok(t.claude_code.cmd .. " found: translations use its login, no API key needed")
+    local name = require("i18n-ts.translate").claude_name(t.claude_code)
+    if vim.fn.executable(name) == 1 then
+      h.ok(name .. " found: translations use its login, no API key needed")
     else
-      h.error(t.claude_code.cmd .. " not found (install Claude Code or set translate.claude_code.cmd)")
+      h.error(name .. " not found (install Claude Code or set translate.claude_code.cmd)")
+    end
+    if t.claude_code.session == false then
+      h.info("session off: one `claude -p` per translation (~5 s each)")
+      return
+    end
+    local workers = require("i18n-ts.claude_session").status(t)
+    if #workers == 0 then
+      h.info("warm session: not started yet")
+    end
+    for _, w in ipairs(workers) do
+      h.info(
+        ("warm session: %s, %d/%d turns, %d start(s), up %ds"):format(
+          w.state,
+          w.turns,
+          t.claude_code.max_turns,
+          w.spawns,
+          w.uptime_ms / 1000
+        )
+      )
     end
     return
   end

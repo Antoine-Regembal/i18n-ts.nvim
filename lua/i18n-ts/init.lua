@@ -53,6 +53,7 @@ function M.project(buf)
       store:load_async(function()
         M.refresh_project(project)
       end)
+      require("i18n-ts.translate").prewarm(cfg.translate, require("i18n-ts.editor").other_locales(store))
     end
   end
   return project or nil
@@ -310,6 +311,14 @@ function M.info()
     "showing:  " .. project.locale,
     ("keys:     %d in %s"):format(#s:keys(s.default_locale), s.default_locale),
   }
+  if project.cfg.translate.provider == "claude_code" then
+    for _, w in ipairs(require("i18n-ts.claude_session").status(project.cfg.translate)) do
+      table.insert(
+        lines,
+        ("claude:   %s, %d turn(s), %d start(s), up %ds"):format(w.state, w.turns, w.spawns, w.uptime_ms / 1000)
+      )
+    end
+  end
   for path, err in pairs(s.errors) do
     table.insert(lines, "error:    " .. vim.fn.fnamemodify(path, ":~:.") .. ": " .. err)
   end
