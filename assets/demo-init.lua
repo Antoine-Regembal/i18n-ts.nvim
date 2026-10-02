@@ -142,11 +142,11 @@ local demos = {
       title = "Every locale is filled",
       sub = "Claude Code, Claude API, DeepL or your own command",
     },
-    { keys = "<Space>Ie", title = "Changed the source text?", sub = "<A-t> re-translates every locale from en-US" },
+    { keys = "<Space>Ie", title = "Changed the source text?", sub = "gT re-translates every locale from en-US" },
     {
-      keys = "retranslate<CR>",
+      keys = "gT",
       title = "Re-translate all, after confirmation",
-      sub = "<A-t> or :I18n retranslate. Loaders on every line until the result lands",
+      sub = "gT or :I18n retranslate. Loaders on every line until the result lands",
     },
   },
   picker = {
@@ -177,8 +177,7 @@ local labels = {
   ["gd"] = "Definition",
   ["<C-O>"] = "Back",
   ["<Tab>"] = "Next locale",
-  ["<M-t>"] = "Re-translate all",
-  ["retranslate<CR>"] = "Re-translate all",
+  ["gT"] = "Re-translate all",
   ["<C-X>"] = "Remove key",
   [":w"] = "Save",
   ["<CR>"] = "Enter",
@@ -192,7 +191,6 @@ local pretty = {
   ["<Down>"] = "↓",
   ["<Esc>"] = "Esc",
   ["<Tab>"] = "Tab",
-  ["<M-t>"] = "Alt-t",
   ["<C-O>"] = "Ctrl-o",
   ["<C-X>"] = "Ctrl-x",
 }

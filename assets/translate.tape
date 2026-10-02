@@ -56,9 +56,8 @@ Type "Free shipping on orders over $50"
 Escape
 Sleep 1s
 
-# 7. Re-translate every locale, after confirmation (same as <A-t>, which VHS can't send as Meta)
-Type ":I18n retranslate"
-Enter
+# 7. Re-translate every locale, after confirmation
+Type "gT"
 Sleep 2s
 Enter
 Sleep 5s

@@ -2,7 +2,25 @@
 
 See your translations where you use them. A fast, dependency-free Neovim plugin for TypeScript / JavaScript projects using JSON translation files: vue-i18n, i18next / react-i18next, next-intl, nuxt-i18n, or your own `t()`.
 
+**Machine-translate from the default locale.** Type the `en-US` value, save and close: every other locale is filled in the background. `gT` re-translates them all after you change the source text. The GIF uses a demo provider with canned answers.
+
+![Type the default locale, save and close: every other locale is translated in the background](assets/translate.gif)
+
+**Edit a key in every locale from one float.** One line per locale, badges for modified and missing values, the keys listed below.
+
+![Edit a key in every locale from one float](assets/edit.gif)
+
+**Translations next to every `t()` call.** Missing keys as diagnostics, switch the displayed locale, see every locale, go to definition.
+
 ![Translations next to every t() call, locale switch, all locales, go to definition](assets/inline.gif)
+
+**Search every key and translation.** File preview, jump to the definition, remove a key from every locale.
+
+![Key picker with file preview, jump to definition, remove a key from every locale](assets/picker.gif)
+
+**Complete keys inside `t('…')`.** With blink.cmp, every locale in the documentation.
+
+![Key completion inside t() with blink.cmp, every locale in the documentation](assets/completion.gif)
 
 ## Features
 
@@ -250,17 +268,7 @@ opts = {
 | `:I18n toggle` | Hide / show translations and diagnostics |
 | `:I18n reload` | Forget every project and re-read the configuration and files |
 
-### Searching and removing keys
-
-![Key picker with file preview, jump to definition, remove a key from every locale](assets/picker.gif)
-
-### Completion
-
-![Key completion inside t() with blink.cmp, every locale in the documentation](assets/completion.gif)
-
 ### Editing translations
-
-![Edit a key in every locale from one float](assets/edit.gif)
 
 `:I18n edit` opens a float with one line per locale, the default locale first:
 
@@ -324,9 +332,7 @@ Type the default locale's value, then `<CR>` to save and close. The translation 
 
 ### Machine translation
 
-![Type the default locale, save and close: every other locale is translated in the background](assets/translate.gif)
-
-The GIF uses a demo provider with canned answers. Machine translation is off until you set `translate.provider`. When it's on, the key and its default-locale text are sent to the provider you choose. API keys are only ever read from environment variables, never from your config or a project file.
+Machine translation is off until you set `translate.provider`. When it's on, the key and its default-locale text are sent to the provider you choose. API keys are only ever read from environment variables, never from your config or a project file.
 
 #### Choosing a provider
 
