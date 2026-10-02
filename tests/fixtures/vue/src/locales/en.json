@@ -1,0 +1,15 @@
+{
+  "common": {
+    "title": "Common title",
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
+  "home": {
+    "title": "Home title",
+    "empty": {}
+  },
+  "multiline": "Line one\nLine two",
+  "list": ["first", "second"]
+}

@@ -1,0 +1,12 @@
+{
+  "common": {
+    "title": "Titre commun",
+    "actions": {
+      "save": "Enregistrer"
+    }
+  },
+  "home": {
+    "title": "Titre accueil",
+    "empty": {}
+  }
+}

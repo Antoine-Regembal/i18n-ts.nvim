@@ -1,0 +1,85 @@
+*i18n-ts.txt*  Translations inline for TypeScript / JavaScript projects
+
+==============================================================================
+CONTENTS                                                    *i18n-ts-contents*
+
+  1. Introduction ........................................ |i18n-ts-intro|
+  2. Setup ............................................... |i18n-ts-setup|
+  3. Project detection ................................... |i18n-ts-project|
+  4. Commands ............................................ |i18n-ts-commands|
+  5. Completion .......................................... |i18n-ts-completion|
+  6. Highlights .......................................... |i18n-ts-highlights|
+
+==============================================================================
+1. INTRODUCTION                                                *i18n-ts-intro*
+
+Shows the translation next to every `t('key')` call, reports missing keys,
+jumps to definitions, completes keys and adds new keys to every locale file.
+Works with JSON translation files (vue-i18n, i18next, next-intl, ...).
+
+Requires Neovim >= 0.10. Optional: ripgrep, snacks.nvim, blink.cmp.
+
+==============================================================================
+2. SETUP                                                       *i18n-ts-setup*
+
+>lua
+    require("i18n-ts").setup({})
+<
+Every option, with its default, is listed in the README. Configuration is
+merged in this order: defaults, |i18n-ts.setup()| options, the project's
+`.i18n-ts.json`, then `projects[root]` from your setup.
+
+                                                          *i18n-ts-project-file*
+`.i18n-ts.json` at the project root may set `sources`, `locales`,
+`default_locale`, `namespace_separator`, `default_namespace`, `functions` and
+`patterns`. It is read as JSON and never executed; `add.format_cmd` is ignored
+there.
+
+==============================================================================
+3. PROJECT DETECTION                                         *i18n-ts-project*
+
+Root: the first of `root_markers` (`.i18n-ts.json`, `.git`, `package.json`)
+found upwards from the buffer.
+
+Sources: `sources` when set, relative to the root, with `{locale}` and an
+optional `{namespace}` placeholder. Otherwise directories named `locales`,
+`locale`, `i18n`, `lang`, `langs`, `messages` or `translations` are searched
+up to `auto_detect.depth` levels, skipping `auto_detect.skip` and hidden
+directories.
+
+Run `:checkhealth i18n-ts` to see what was detected.
+
+==============================================================================
+4. COMMANDS                                                 *i18n-ts-commands*
+
+:I18n [info]            Root, sources, locales, key count, load errors.
+:I18n def               Jump to the key under the cursor.
+:I18n show              Float with the key in every locale.
+:I18n next              Display the next locale.
+:I18n keys              Key picker. <CR> jumps, <C-y> yanks, <A-i> inserts.
+:I18n add [key]         Add a key to every locale file.
+:I18n usages [key]      Usages of a key (ripgrep).
+:I18n toggle            Hide / show translations and diagnostics.
+:I18n reload            Re-read configuration and translation files.
+
+                                                        *i18n-ts.definition()*
+require("i18n-ts").definition()
+    Jumps to the key under the cursor. Returns `false` when there is none, so
+    it can fall back to |vim.lsp.buf.definition()|.
+
+==============================================================================
+5. COMPLETION                                             *i18n-ts-completion*
+
+blink.cmp provider:
+>lua
+    providers = { i18n = { name = "i18n", module = "i18n-ts.blink" } }
+<
+Keys are offered only inside a translation call.
+
+==============================================================================
+6. HIGHLIGHTS                                             *i18n-ts-highlights*
+
+I18nTsTranslation       Inline translation. Links to |hl-Comment|.
+I18nTsMissing           Links to DiagnosticWarn.
+
+ vim:tw=78:ts=8:ft=help:norl:
