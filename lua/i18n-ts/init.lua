@@ -336,6 +336,9 @@ M.subcommands = {
   translate = function(arg)
     require("i18n-ts.navigation").translate(arg)
   end,
+  retranslate = function(arg)
+    require("i18n-ts.navigation").retranslate(arg)
+  end,
   remove = function(arg)
     require("i18n-ts.navigation").remove(arg)
   end,

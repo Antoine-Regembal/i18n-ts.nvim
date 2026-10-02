@@ -112,6 +112,26 @@ function M.translate(arg)
   require("i18n-ts.editor").translate_key(project, key)
 end
 
+--- Re-translates every locale of a key from the default one, replacing existing values, after confirmation.
+function M.retranslate(arg, project)
+  local editor = require("i18n-ts.editor")
+  local buf = vim.api.nvim_get_current_buf()
+  if not project and (not arg or arg == "") and editor.session(buf) then
+    return editor.retranslate_now(buf)
+  end
+  local key = arg
+  if not project then
+    key, project = resolve_key(arg)
+  end
+  if not project then
+    return
+  end
+  if not key or key == "" then
+    return notify("no translation key under the cursor", vim.log.levels.WARN)
+  end
+  editor.retranslate(project, key)
+end
+
 --- Deletes a key from every locale after confirmation, warning when the code still uses it.
 ---@param opts? { check_usages?: boolean }
 function M.remove(arg, project, opts)

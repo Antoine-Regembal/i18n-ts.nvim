@@ -793,6 +793,105 @@ test("the editor float shows a loader on the lines being translated", function()
   vim.fn.delete(p.root, "rf")
 end)
 
+local function with_select(answer, fn)
+  local prompts = {}
+  local original = vim.ui.select
+  vim.ui.select = function(items, opts, on_choice)
+    table.insert(prompts, opts.prompt)
+    on_choice(answer == "confirm" and items[1] or items[#items])
+  end
+  local ok, err = pcall(fn, prompts)
+  vim.ui.select = original
+  assert(ok, err)
+end
+
+test(":I18n retranslate replaces every other locale after confirmation", function()
+  local requests = {}
+  local p = tmp_project({
+    en = { "{", '  "k": "New text"', "}" },
+    fr = { "{", '  "k": "Ancien"', "}" },
+    de = { "{", "}" },
+  }, {
+    translate = {
+      provider = function(req, cb)
+        table.insert(requests, req)
+        cb(nil, { fr = "Nouveau", de = "Neu" })
+      end,
+    },
+  })
+  local navigation = require("i18n-ts.navigation")
+  with_select("cancel", function(prompts)
+    navigation.retranslate("k", p)
+    eq(prompts[1], "Re-translate 2 locales of 'k' from en? Existing values will be replaced.")
+  end)
+  vim.wait(50)
+  eq(#requests, 0)
+  with_select("confirm", function()
+    navigation.retranslate("k", p)
+  end)
+  assert(vim.wait(2000, function()
+    return p.store:get("k", "fr") == "Nouveau"
+  end))
+  eq(requests[1].targets, { "de", "fr" })
+  eq(p.store:get("k", "de"), "Neu")
+  eq(p.store:get("k", "en"), "New text")
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("retranslate keeps a value changed while the request was running", function()
+  local finish
+  local p = tmp_project({
+    en = { "{", '  "k": "New"', "}" },
+    fr = { "{", '  "k": "Old fr"', "}" },
+    de = { "{", '  "k": "Old de"', "}" },
+  }, {
+    translate = {
+      provider = function(_, cb)
+        finish = function()
+          cb(nil, { fr = "Nouveau", de = "Neu" })
+        end
+      end,
+    },
+  })
+  with_select("confirm", function()
+    require("i18n-ts.navigation").retranslate("k", p)
+  end)
+  edit.set(p.store, "k", { de = "Mine" })
+  finish()
+  assert(vim.wait(2000, function()
+    return p.store:get("k", "fr") == "Nouveau"
+  end))
+  eq(p.store:get("k", "de"), "Mine")
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("<A-t> in the float saves, retranslates and updates the lines", function()
+  local p = tmp_project({
+    en = { "{", '  "k": "Old"', "}" },
+    fr = { "{", '  "k": "Vieux"', "}" },
+  }, {
+    translate = {
+      provider = function(req, cb)
+        eq(req.source, "Fresh")
+        cb(nil, { fr = "Frais" })
+      end,
+    },
+  })
+  local buf = editor.open(p, "k")
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Fresh" })
+  with_select("confirm", function()
+    vim.api.nvim_feedkeys(vim.keycode("<A-t>"), "x", false)
+  end)
+  assert(vim.wait(2000, function()
+    return vim.api.nvim_buf_get_lines(buf, 1, 2, false)[1] == "Frais"
+  end))
+  eq(p.store:get("k", "en"), "Fresh")
+  eq(p.store:get("k", "fr"), "Frais")
+  eq(vim.bo[buf].modified, false)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
 test("editor does not translate when the default locale is empty", function()
   local called = false
   local p = tmp_project({ en = { "{", "}" }, fr = { "{", "}" } }, {

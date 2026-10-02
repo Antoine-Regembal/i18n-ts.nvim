@@ -60,6 +60,8 @@ Run `:checkhealth i18n-ts` to see what was detected.
                         <C-y> yanks, <A-i> inserts.
 :I18n edit [key]        Edit the key in every locale, see |i18n-ts-editor|.
 :I18n translate [key]   Machine-translate the missing locales of a key.
+:I18n retranslate [key] Re-translate every locale of a key from the default
+                        one, replacing existing values, after confirmation.
 :I18n add [key]         Add a key to every locale file.
 :I18n remove [key]      Delete a key (or an object) from every locale file,
                         after confirmation. Warns when it is still used.
@@ -80,6 +82,8 @@ so the float always has one line per locale.
     :w                  Save the changed lines, add the filled-in locales.
     <CR> (normal)       Save and close.
     <C-t>               Save, then translate the empty locales now.
+    <A-t>               Save, then re-translate every locale, replacing
+                        existing values (asks first).
     q <Esc>             Close without saving (empty locales are still
                         translated from the saved default value).
 

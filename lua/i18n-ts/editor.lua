@@ -120,15 +120,15 @@ local function missing_locales(store, key)
   return targets
 end
 
---- Puts freshly translated values into the open floats for `key`, on lines still empty only.
-local function show_in_floats(project, key)
+--- Puts freshly translated values into the open floats for `key`, on lines still showing the value from before.
+local function show_in_floats(project, key, before)
   for buf, s in pairs(sessions) do
     if s.project == project and s.key == key and vim.api.nvim_buf_is_valid(buf) then
       local modified = vim.bo[buf].modified
       for i, l in ipairs(s.locales) do
         local value = project.store:get(key, l)
         local line = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1]
-        if value and line == "" then
+        if value and line ~= to_line(value) and (line == "" or line == to_line(before[l])) then
           vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { to_line(value) })
         end
       end
@@ -139,9 +139,11 @@ local function show_in_floats(project, key)
   end
 end
 
---- Fills `targets` (default: every missing locale) of `key` with machine translations of the default locale,
---- in the background: closing the float doesn't stop it, and values typed meanwhile are kept.
-function M.translate_key(project, key, targets, on_done)
+--- Machine-translates `targets` (default: every missing locale) of `key` from the default locale, in the
+--- background: closing the float doesn't stop it. A locale changed while the request runs is left as is.
+--- `opts.overwrite` replaces existing values too; otherwise only empty locales are filled.
+function M.translate_key(project, key, targets, on_done, opts)
+  opts = opts or {}
   local store = project.store
   local tcfg = project.cfg.translate
   local source = store:get(key, store.default_locale)
@@ -159,6 +161,10 @@ function M.translate_key(project, key, targets, on_done)
   if #targets == 0 then
     return notify(("'%s' is translated in every locale"):format(key))
   end
+  local before = {}
+  for _, l in ipairs(targets) do
+    before[l] = store:get(key, l)
+  end
   project.pending[key] = { targets = targets, started = vim.uv.now() }
   require("i18n-ts").track_pending(project)
   local req = { key = key, source_locale = store.default_locale, source = source, targets = targets }
@@ -168,15 +174,18 @@ function M.translate_key(project, key, targets, on_done)
     if err then
       errors[translate.label(tcfg)] = err
     else
-      local still_missing = {}
-      for _, l in ipairs(missing_locales(store, key)) do
-        still_missing[l] = result[l]
+      local apply = {}
+      for _, l in ipairs(targets) do
+        local current = store:get(key, l)
+        if current == before[l] and (opts.overwrite or current == nil) then
+          apply[l] = result[l]
+        end
       end
-      written, errors = edit.set(store, key, still_missing)
+      written, errors = edit.set(store, key, apply)
       errors = vim.tbl_extend("keep", errors, locale_errors)
     end
     finish({ project = project, key = key }, written, errors, ("machine-translated (%s)"):format(translate.label(tcfg)))
-    show_in_floats(project, key)
+    show_in_floats(project, key, before)
     if on_done then
       on_done()
     end
@@ -220,6 +229,61 @@ function M.translate_now(buf)
     end)
   end
   translate_missing(s.project, s.key, buf, { quiet = false })
+end
+
+--- Re-translates every locale of `key` from the default one, replacing existing values, after confirmation.
+function M.retranslate(project, key)
+  local store = project.store
+  if not project.cfg.translate.provider then
+    return notify("set translate.provider to enable machine translation", vim.log.levels.WARN)
+  end
+  if not store:get(key, store.default_locale) then
+    return notify(("'%s' has no %s value to translate from"):format(key, store.default_locale), vim.log.levels.WARN)
+  end
+  if (project.pending or {})[key] then
+    return notify(("'%s' is already being translated"):format(key))
+  end
+  local targets = {}
+  for _, l in ipairs(store.locales) do
+    if l ~= store.default_locale then
+      table.insert(targets, l)
+    end
+  end
+  if #targets == 0 then
+    return notify("there is no other locale to translate into")
+  end
+  local prompt = ("Re-translate %d locale%s of '%s' from %s? Existing values will be replaced."):format(
+    #targets,
+    #targets > 1 and "s" or "",
+    key,
+    store.default_locale
+  )
+  vim.ui.select({ "Re-translate", "Cancel" }, { prompt = prompt }, function(choice)
+    if choice ~= "Re-translate" then
+      return
+    end
+    M.translate_key(project, key, targets, nil, { overwrite = true })
+    for buf, s in pairs(sessions) do
+      if s.project == project and s.key == key and vim.api.nvim_buf_is_valid(buf) then
+        decorate(buf)
+        set_title(buf)
+      end
+    end
+  end)
+end
+
+--- Saves the float, then re-translates all its locales from the default one.
+function M.retranslate_now(buf)
+  local s = sessions[buf]
+  if not s then
+    return
+  end
+  if vim.bo[buf].modified then
+    vim.api.nvim_buf_call(buf, function()
+      vim.cmd("write")
+    end)
+  end
+  M.retranslate(s.project, s.key)
 end
 
 --- Project and key edited in `buf`, when it is an editor float.
@@ -410,6 +474,9 @@ function M.open(project, key)
   end, { buffer = buf, expr = true, replace_keycodes = false })
   map("<C-t>", function()
     M.translate_now(buf)
+  end, { "n", "i" })
+  map("<A-t>", function()
+    M.retranslate_now(buf)
   end, { "n", "i" })
   map("q", function()
     M.close(buf)

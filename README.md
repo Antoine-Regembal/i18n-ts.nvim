@@ -45,6 +45,7 @@ return {
       { "<leader>In", "<cmd>I18n next<cr>", desc = "i18n: next locale" },
       { "<leader>Ie", "<cmd>I18n edit<cr>", desc = "i18n: edit key" },
       { "<leader>IT", "<cmd>I18n translate<cr>", desc = "i18n: translate missing locales" },
+      { "<leader>IR", "<cmd>I18n retranslate<cr>", desc = "i18n: re-translate all locales" },
       { "<leader>Ia", "<cmd>I18n add<cr>", desc = "i18n: add key" },
       { "<leader>Ix", "<cmd>I18n remove<cr>", desc = "i18n: remove key" },
       { "<leader>Iu", "<cmd>I18n usages<cr>", desc = "i18n: usages" },
@@ -217,6 +218,7 @@ opts = {
 | `:I18n keys` | Picker: `<CR>` jumps, `<C-e>` edits, `<C-x>` removes, `<C-y>` yanks the key, `<A-i>` inserts it |
 | `:I18n edit [key]` | Edit the key in every locale (see below); also works on a key line inside a translation file |
 | `:I18n translate [key]` | Machine-translate the key's missing locales from the default locale (inside the editor float: save, then translate now) |
+| `:I18n retranslate [key]` | Re-translate every locale of the key from the default one, replacing existing values, after confirmation |
 | `:I18n add [key]` | Add the key (argument, or the one under the cursor) to every locale |
 | `:I18n remove [key]` | Delete the key (or a whole object) from every locale, after confirmation; warns when the code still uses it |
 | `:I18n usages [key]` | Usages of the key, translation files excluded |
@@ -245,12 +247,13 @@ Each line holds only the value: the locale label isn't text you can edit. The fl
 | `o`, `O`, `J` | Disabled |
 | `:w` | Save (no translation) |
 | `<C-t>` | Save, then translate the empty locales now (normal and insert mode) |
+| `<A-t>` | Save, then re-translate **every** locale from the default one, replacing existing values (asks first) |
 | `<CR>` in normal mode | Save and close |
 | `q` / `<Esc>` | Close without saving |
 
 `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
 
-With a translation provider set, **closing the float** (`<CR>`, `q`, `<Esc>`, `:q`…) fills every locale still empty in the files, translated from the saved default locale value. `:w` alone never translates, so you can save the default locale several times while you refine it. To translate without closing, press `<C-t>` (or run `:I18n translate` from the float). Locales that already have a value are never re-translated, even if you change the default locale's text.
+With a translation provider set, **closing the float** (`<CR>`, `q`, `<Esc>`, `:q`…) fills every locale still empty in the files, translated from the saved default locale value. `:w` alone never translates, so you can save the default locale several times while you refine it. To translate without closing, press `<C-t>` (or run `:I18n translate` from the float). Locales that already have a value are kept, even if you change the default locale's text. When you did change it and want every locale to follow, use `<A-t>` in the float or `:I18n retranslate`: after a confirmation, every other locale is re-translated from the default one. A locale you edit while the request runs is still left as you typed it.
 
 Type the default locale's value, then `<CR>` to save and close. The translation runs in the background and is written to the files when it arrives:
 
