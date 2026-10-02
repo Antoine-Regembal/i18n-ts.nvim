@@ -44,12 +44,20 @@ M.defaults = {
   },
   -- Fills empty locales from the default one. Sends the source text to the provider; never read from project files.
   translate = {
-    -- nil (off), "anthropic", "deepl", "command", or fun(request, callback)
+    -- nil (off), "claude_code", "anthropic", "deepl", "command", or fun(request, callback)
     provider = nil,
     -- Translate the empty locales when the editor is written.
     auto = true,
     -- Extra instruction for the model, e.g. "Medical software used by doctors."
     context = nil,
+    -- Uses the Claude Code CLI login: no API key needed.
+    claude_code = {
+      cmd = "claude",
+      model = "claude-haiku-4-5",
+      -- Hard cap per call, in USD (`--max-budget-usd`); nil to disable.
+      max_budget_usd = 0.05,
+      extra_args = {},
+    },
     anthropic = {
       model = "claude-haiku-4-5",
       api_key_env = "ANTHROPIC_API_KEY",

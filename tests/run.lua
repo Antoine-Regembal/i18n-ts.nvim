@@ -615,6 +615,50 @@ test("anthropic retries once on 429 then succeeds", function()
   vim.env.I18N_TS_TEST_KEY = nil
 end)
 
+local claude_cfg = vim.tbl_deep_extend("force", config.defaults.translate, { provider = "claude_code" })
+
+local function arg_after(cmd, flag)
+  for i, a in ipairs(cmd) do
+    if a == flag then
+      return cmd[i + 1]
+    end
+  end
+end
+
+test("claude_code runs claude -p with the light model, a schema, no tools and no API key", function()
+  with_runner({
+    vim.json.encode({ type = "result", is_error = false, structured_output = { fr = "Enregistrer", de = "Speichern" } }),
+  }, function(calls)
+    local err, result = run_sync(claude_cfg, req)
+    eq(err, nil)
+    eq(result, { fr = "Enregistrer", de = "Speichern" })
+    local cmd = calls[1].cmd
+    eq(cmd[1], "claude")
+    assert(vim.tbl_contains(cmd, "-p"))
+    eq(arg_after(cmd, "--model"), "claude-haiku-4-5")
+    eq(arg_after(cmd, "--output-format"), "json")
+    eq(arg_after(cmd, "--tools"), "")
+    eq(vim.json.decode(arg_after(cmd, "--json-schema")).required, { "fr", "de" })
+    assert(not vim.tbl_contains(cmd, "--bare"), "--bare would skip the Claude Code login")
+    eq(vim.json.decode(calls[1].opts.stdin).source, "Save {count}")
+    eq(calls[1].opts.cwd, vim.fn.stdpath("cache"))
+  end)
+end)
+
+test("claude_code falls back to a JSON result string and reports CLI errors", function()
+  with_runner({
+    vim.json.encode({ type = "result", is_error = false, result = '{"fr":"A","de":"B"}' }),
+    vim.json.encode({ type = "result", is_error = true, result = "Not logged in" }),
+    "not json",
+  }, function()
+    local err, result = run_sync(claude_cfg, req)
+    eq(err, nil)
+    eq(result, { fr = "A", de = "B" })
+    assert(run_sync(claude_cfg, req):find("Not logged in", 1, true))
+    assert(run_sync(claude_cfg, req):find("unexpected output", 1, true))
+  end)
+end)
+
 test("command provider gets the request on stdin and returns its JSON", function()
   local stdin_file = vim.fn.tempname()
   vim.env.I18N_TS_TEST_STDIN = stdin_file

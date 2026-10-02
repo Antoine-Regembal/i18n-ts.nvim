@@ -84,11 +84,15 @@ local function only_targets(result, targets)
   return out
 end
 
-function M.anthropic_body(acfg, req, context)
+local function target_schema(targets)
   local properties = {}
-  for _, l in ipairs(req.targets) do
+  for _, l in ipairs(targets) do
     properties[l] = { type = "string" }
   end
+  return { type = "object", properties = properties, required = targets, additionalProperties = false }
+end
+
+function M.anthropic_body(acfg, req, context)
   return {
     model = acfg.model,
     max_tokens = acfg.max_tokens,
@@ -104,17 +108,7 @@ function M.anthropic_body(acfg, req, context)
         }),
       },
     },
-    output_config = {
-      format = {
-        type = "json_schema",
-        schema = {
-          type = "object",
-          properties = properties,
-          required = req.targets,
-          additionalProperties = false,
-        },
-      },
-    },
+    output_config = { format = { type = "json_schema", schema = target_schema(req.targets) } },
   }
 end
 
@@ -156,6 +150,62 @@ function providers.anthropic(cfg, req, cb)
     end
     cb("no translation in the answer")
   end)
+end
+
+--- Runs the Claude Code CLI headless, so it uses its own login (subscription or API key) instead of a key here.
+function providers.claude_code(cfg, req, cb)
+  local ccfg = cfg.claude_code
+  local cmd = {
+    ccfg.cmd,
+    "-p",
+    "--model",
+    ccfg.model,
+    "--output-format",
+    "json",
+    "--json-schema",
+    vim.json.encode(target_schema(req.targets)),
+    "--system-prompt",
+    SYSTEM_PROMPT .. (cfg.context and (" Context: " .. cfg.context) or ""),
+    "--tools",
+    "",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+  }
+  if ccfg.max_budget_usd then
+    vim.list_extend(cmd, { "--max-budget-usd", tostring(ccfg.max_budget_usd) })
+  end
+  vim.list_extend(cmd, ccfg.extra_args or {})
+  local stdin = vim.json.encode({
+    key = req.key,
+    source_locale = req.source_locale,
+    source = req.source,
+    targets = req.targets,
+  })
+  -- A neutral cwd keeps the project's CLAUDE.md out of the prompt.
+  local ok, err = pcall(M.runner, cmd, { stdin = stdin, text = true, cwd = vim.fn.stdpath("cache") }, function(res)
+    local decoded_ok, out = pcall(vim.json.decode, res.stdout or "", { luanil = { object = true, array = true } })
+    if not decoded_ok or type(out) ~= "table" then
+      local detail = vim.trim(res.stderr or "")
+      return cb(
+        ("unexpected output from %s (exit %d)%s"):format(ccfg.cmd, res.code, detail ~= "" and (": " .. detail) or "")
+      )
+    end
+    if out.is_error then
+      return cb(("%s: %s"):format(ccfg.cmd, tostring(out.result or out.subtype or "error")))
+    end
+    local result = out.structured_output
+    if type(result) ~= "table" and type(out.result) == "string" then
+      local parsed_ok, parsed = pcall(vim.json.decode, out.result)
+      result = parsed_ok and parsed or nil
+    end
+    if type(result) ~= "table" then
+      return cb("no translation in the Claude Code answer")
+    end
+    cb(nil, only_targets(result, req.targets))
+  end)
+  if not ok then
+    cb(("cannot run %s: %s"):format(ccfg.cmd, tostring(err)))
+  end
 end
 
 local deepl_targets = { en = "EN-US", pt = "PT-PT", cmn = "ZH-HANS", zh = "ZH-HANS" }
@@ -240,6 +290,8 @@ end
 function M.label(cfg)
   if cfg.provider == "anthropic" then
     return cfg.anthropic.model
+  elseif cfg.provider == "claude_code" then
+    return "Claude Code, " .. cfg.claude_code.model
   end
   return type(cfg.provider) == "function" and "custom provider" or tostring(cfg.provider)
 end

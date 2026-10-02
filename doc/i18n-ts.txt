@@ -81,11 +81,13 @@ so the float always has one line per locale.
 Emptied lines are left unchanged. Newlines in values are shown as `\n`.
 
                                                            *i18n-ts-translate*
-With `translate.provider` set ("anthropic", "deepl", "command" or a Lua
-function), writing the editor also fills the locales still empty, translated
-from the default locale. The source text is sent to the provider. API keys are
-read from the environment variable named by `api_key_env`, and passed to curl
-on stdin. `translate` cannot be set from `.i18n-ts.json`.
+With `translate.provider` set ("claude_code", "anthropic", "deepl", "command"
+or a Lua function), writing the editor also fills the locales still empty,
+translated from the default locale. The source text is sent to the provider.
+"claude_code" runs `claude -p` and reuses the Claude Code login, with no API
+key. For "anthropic" and "deepl", API keys are read from the environment
+variable named by `api_key_env` and passed to curl on stdin. `translate`
+cannot be set from `.i18n-ts.json`.
 
                                                         *i18n-ts.definition()*
 require("i18n-ts").definition()

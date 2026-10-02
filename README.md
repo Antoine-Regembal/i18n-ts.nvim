@@ -11,7 +11,7 @@ See your translations where you use them. A fast, dependency-free Neovim plugin 
 - Completion of keys inside `t('…')` with [blink.cmp](https://github.com/Saghen/blink.cmp), all locales in the documentation
 - Picker over every key and translation ([snacks.nvim](https://github.com/folke/snacks.nvim), `vim.ui.select` without it)
 - Edit a key in every locale from one float: one line per locale, the default locale first, `:w` to save
-- Machine-translate the empty locales from the default one (Claude, DeepL, your own command or Lua function)
+- Machine-translate the empty locales from the default one (Claude Code with no API key, the Claude API, DeepL, your own command or Lua function)
 - Add a key to every locale file at once, keeping key order and indentation
 - Find the usages of a key with ripgrep
 - Zero config for the usual layouts: the project root and the translation files are detected
@@ -138,9 +138,10 @@ require("i18n-ts").setup({
     format_cmd = nil, -- e.g. { "npx", "prettier", "--write" }, run on the written files
   },
   translate = {
-    provider = nil, -- nil (off), "anthropic", "deepl", "command", or function(request, callback)
+    provider = nil, -- nil (off), "claude_code", "anthropic", "deepl", "command", or function(request, callback)
     auto = true, -- translate the empty locales when the editor is written
     context = nil, -- extra hint for the model, e.g. "Medical software used by doctors."
+    claude_code = { cmd = "claude", model = "claude-haiku-4-5", max_budget_usd = 0.05, extra_args = {} },
     anthropic = {
       model = "claude-haiku-4-5",
       api_key_env = "ANTHROPIC_API_KEY",
@@ -248,7 +249,15 @@ With a translation provider set, writing the float also fills every locale still
 
 The source text and the key are sent to the provider you choose. Nothing is sent while `translate.provider` is `nil`. API keys are read from environment variables only.
 
-**Claude** (one request per key for every locale, using structured JSON output):
+**Claude Code** (no API key: reuses the login of the [Claude Code](https://claude.com/claude-code) CLI, subscription or API key, by running `claude -p` headless):
+
+```lua
+translate = { provider = "claude_code" } -- claude-haiku-4-5, capped at $0.05 per call
+```
+
+It runs with no tools, no MCP servers, no saved session, and from Neovim's cache directory so your project's `CLAUDE.md` isn't added to the prompt. Your user-level `~/.claude/CLAUDE.md` is still loaded. Each call starts the CLI, so expect a few seconds per key. Options: `translate.claude_code = { cmd = "claude", model = "claude-haiku-4-5", max_budget_usd = 0.05, extra_args = {} }`.
+
+**Claude API** (one HTTPS request per key for every locale, using structured JSON output):
 
 ```lua
 translate = { provider = "anthropic" } -- reads ANTHROPIC_API_KEY, uses claude-haiku-4-5

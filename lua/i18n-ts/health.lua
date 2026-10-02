@@ -50,6 +50,14 @@ function M.check()
       tostring(t.auto)
     )
   )
+  if t.provider == "claude_code" then
+    if vim.fn.executable(t.claude_code.cmd) == 1 then
+      h.ok(t.claude_code.cmd .. " found: translations use its login, no API key needed")
+    else
+      h.error(t.claude_code.cmd .. " not found (install Claude Code or set translate.claude_code.cmd)")
+    end
+    return
+  end
   local env = (t.provider == "anthropic" and t.anthropic.api_key_env) or (t.provider == "deepl" and t.deepl.api_key_env)
   if env then
     if vim.env[env] and vim.env[env] ~= "" then
