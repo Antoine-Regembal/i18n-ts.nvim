@@ -104,9 +104,26 @@ is written, and locales filled in meanwhile are never overwritten.
 key. It keeps one warm session per project, started and warmed up when the
 project opens, so a translation takes ~3.5 s instead of ~15 s
 (`claude_code.session`, `prewarm`, `max_turns`, `idle_timeout_ms`). A failed
-session falls back to one-shot calls. For "anthropic" and "deepl", API keys are read from the environment
-variable named by `api_key_env` and passed to curl on stdin. `translate`
-cannot be set from `.i18n-ts.json`.
+session falls back to one-shot calls. For "anthropic" and "deepl", API keys
+are read from the environment variable named by `api_key_env` and passed to
+curl on stdin. `translate` cannot be set from `.i18n-ts.json`.
+
+                                                   *i18n-ts-translate-setup*
+Setup per provider (the README has the full steps and examples):
+
+  claude_code   Install Claude Code, log in once with `claude`, check
+                `:echo exepath("claude")`. No API key.
+  anthropic     Create a key in the Claude Console, export it as
+                ANTHROPIC_API_KEY before starting Neovim. Needs curl.
+  deepl         Create a DeepL API key (free keys end in ":fx"), export it
+                as DEEPL_API_KEY. Needs curl.
+  command       `command = { "prog", ... }`: gets {key, source_locale,
+                source, targets, schema_locales} as JSON on stdin, prints
+                {"<locale>": "<text>"}; a non-zero exit is an error.
+  function      `provider = function(request, callback)`; call
+                `callback(nil, { fr = "..." })` or `callback("error")`.
+
+Then run `:checkhealth i18n-ts` from a source file of the project.
 
                                                         *i18n-ts.definition()*
 require("i18n-ts").definition()

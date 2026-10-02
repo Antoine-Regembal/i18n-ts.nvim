@@ -283,13 +283,40 @@ Type the default locale's value, then `<CR>` to save and close. The translation 
 
 ### Machine translation
 
-The source text and the key are sent to the provider you choose. Nothing is sent while `translate.provider` is `nil`. API keys are read from environment variables only.
+Machine translation is off until you set `translate.provider`. When it's on, the key and its default-locale text are sent to the provider you choose. API keys are only ever read from environment variables, never from your config or a project file.
 
-**Claude Code** (no API key: reuses the login of the [Claude Code](https://claude.com/claude-code) CLI, subscription or API key, by running `claude -p` headless):
+#### Choosing a provider
 
-```lua
-translate = { provider = "claude_code" } -- claude-haiku-4-5
-```
+| Provider | You need | Speed per key | Cost | Locales |
+| --- | --- | --- | --- | --- |
+| `claude_code` | The [Claude Code](https://claude.com/claude-code) CLI, logged in | ~3.5 s, warm session (measured) | Your Claude plan, ~$0.004 per key | All |
+| `anthropic` | An Anthropic API key, `curl` | One HTTPS request, no CLI start-up | ~$0.002 per key (Claude Haiku 4.5) | All |
+| `deepl` | A DeepL API key (free tier available), `curl` | One HTTPS request per locale, in parallel | Free up to 500,000 characters per month | [DeepL's list](https://developers.deepl.com/docs/getting-started/supported-languages) (no Malay, for example) |
+| `command` | Any program you write or install | Depends | Depends | Depends |
+| Lua function | A few lines of Lua | Depends | Depends | Depends |
+
+The examples below are for LazyVim (`lua/plugins/i18n-ts.lua`). With another plugin manager, pass the same table to `require("i18n-ts").setup()`. After any change, open a source file of your project and run `:checkhealth i18n-ts`: its "machine translation" section shows the provider, the model, and whether everything it needs is there.
+
+#### Claude Code (no API key)
+
+Uses the login of the Claude Code CLI, whether that's a Claude subscription or an API key, by running `claude -p` in the background.
+
+1. Install Claude Code and log in once in a terminal: run `claude` and follow the login prompt.
+2. Check that `claude` is on the `PATH` Neovim sees: `:echo exepath("claude")` must print a path.
+3. Add the provider:
+
+   ```lua
+   {
+     "Antoine-Regembal/i18n-ts.nvim",
+     opts = {
+       translate = { provider = "claude_code" }, -- claude-haiku-4-5
+     },
+   }
+   ```
+
+4. Restart Neovim, open a file of the project, then run `:checkhealth i18n-ts`. It shows `claude found` and the warm session state.
+
+If `claude` isn't found, set its full path: `claude_code = { cmd = vim.fn.expand("~/.local/bin/claude") }`. For a wrapper, use a list: `cmd = { "npx", "@anthropic-ai/claude-code" }`.
 
 Starting the CLI for every key is slow, so the plugin keeps **one warm `claude` session per project**:
 
@@ -328,38 +355,159 @@ translate = {
 
 `:I18n info` and `:checkhealth i18n-ts` show the session state, its turns and its uptime.
 
-**Claude API** (one HTTPS request per key for every locale, using structured JSON output):
+#### Claude API
+
+One HTTPS request per key, for every locale at once, with structured JSON output. This is the fastest Claude option, but it needs an API key and is billed to your API account, not to a Claude subscription.
+
+1. Create a key in the [Claude Console](https://console.anthropic.com/settings/keys).
+2. Make it available to Neovim as `ANTHROPIC_API_KEY`. Export it from your shell profile (`~/.zshrc`, `~/.bashrc`…), ideally from a password manager rather than in plain text. With the macOS Keychain:
+
+   ```sh
+   # once: security add-generic-password -a "$USER" -s anthropic-api-key -w
+   export ANTHROPIC_API_KEY="$(security find-generic-password -a "$USER" -s anthropic-api-key -w)"
+   ```
+
+   On Linux, `secret-tool lookup service anthropic-api-key` does the same with libsecret.
+3. Add the provider:
+
+   ```lua
+   opts = {
+     translate = {
+       provider = "anthropic",
+       anthropic = {
+         model = "claude-haiku-4-5", -- default
+         -- api_key_env = "MY_ANTHROPIC_KEY", -- if your variable has another name
+       },
+     },
+   },
+   ```
+
+4. Start Neovim from a shell that has the variable, then run `:checkhealth i18n-ts`. It shows `ANTHROPIC_API_KEY is set`, never the value.
+
+A key translated into 12 locales is about 500 input and 300 output tokens with Claude Haiku 4.5, around $0.002. Placeholders (`{name}`, `%s`), linked messages (`@:key`), plural separators (`|`) and HTML tags are kept. The key is passed to `curl` on stdin, so it never shows in the process list.
+
+**Common errors**
+- `ANTHROPIC_API_KEY is not set`: Neovim was started from somewhere that didn't load your shell profile. This happens with GUI launchers; start it from a terminal.
+- `invalid API key`: the key was revoked or mistyped.
+- `HTTP 429`: rate-limited. The plugin retries once, then reports it.
+
+#### DeepL
+
+One request per target locale, all sent in parallel. Locales DeepL doesn't support are reported and skipped, and the others are still written.
+
+1. Create a [DeepL API account](https://www.deepl.com/pro-api). The free plan covers 500,000 characters a month, and its keys end in `:fx`.
+2. Export the key as `DEEPL_API_KEY`, as above:
+
+   ```sh
+   export DEEPL_API_KEY="$(security find-generic-password -a "$USER" -s deepl-api-key -w)"
+   ```
+
+3. Add the provider. Free (`:fx`) keys automatically use `api-free.deepl.com`:
+
+   ```lua
+   opts = {
+     translate = { provider = "deepl" },
+   },
+   ```
+
+4. Run `:checkhealth i18n-ts`: it should show `DEEPL_API_KEY is set` and `curl found`.
+
+Locale codes are mapped to DeepL's: `en` becomes `EN-US`, `pt` becomes `PT-PT`, and `cmn` and `zh` become `ZH-HANS`. Any other code is upper-cased as is.
+
+#### Your own command
+
+For any other service, a self-hosted model or a company proxy: the plugin runs your program, writes the request as JSON on its stdin, and reads `{ "<locale>": "<text>" }` from its stdout. Exit with a non-zero code to report an error; stderr is shown to you.
 
 ```lua
-translate = { provider = "anthropic" } -- reads ANTHROPIC_API_KEY, uses claude-haiku-4-5
+opts = {
+  translate = {
+    provider = "command",
+    command = { vim.fn.expand("~/bin/translate-i18n") },
+  },
+},
 ```
 
-A key translated into 12 locales is about 500 input and 300 output tokens with Claude Haiku 4.5, around $0.002. Placeholders (`{name}`, `%s`), linked messages (`@:key`), plural separators (`|`) and HTML tags are kept.
+The request:
 
-**DeepL** (one request per locale; locales DeepL doesn't support are reported and skipped):
-
-```lua
-translate = { provider = "deepl" } -- reads DEEPL_API_KEY; keys ending in ":fx" use the free API
-```
-
-**Your own command**, which gets the request as JSON on stdin and prints `{ "<locale>": "<text>" }`:
-
-```lua
-translate = { provider = "command", command = { "my-translator", "--json" } }
--- stdin: { "key": "common.save", "source_locale": "en-US", "source": "Save", "targets": ["fr", "de"] }
-```
-
-**A Lua function**, for anything else:
-
-```lua
-translate = {
-  provider = function(request, callback)
-    callback(nil, { fr = "…", de = "…" }) -- or callback("error message")
-  end,
+```json
+{
+  "key": "cart.checkout",
+  "source_locale": "en-US",
+  "source": "Proceed to checkout",
+  "targets": ["de", "fr"],
+  "schema_locales": ["de", "es", "fr", "it", "ja"]
 }
 ```
 
-The Claude and DeepL providers need `curl`. The API key goes to curl on stdin, so it never shows in the process list.
+`targets` lists the locales to fill. `schema_locales` lists every locale of the project but the default one, for providers that keep state per locale set. Only `targets` entries are written; extra keys are ignored.
+
+Here is an example `~/bin/translate-i18n` that uses a self-hosted [LibreTranslate](https://libretranslate.com), so the text never leaves your network (needs `jq` and `curl`):
+
+```sh
+#!/bin/sh
+set -eu
+request=$(cat)
+source=$(printf '%s' "$request" | jq -r .source)
+from=$(printf '%s' "$request" | jq -r '.source_locale | split("-")[0]')
+printf '{'
+first=1
+for target in $(printf '%s' "$request" | jq -r '.targets[]'); do
+  text=$(jq -n --arg q "$source" --arg s "$from" --arg t "${target%%-*}" '{q: $q, source: $s, target: $t}' |
+    curl -sf -H 'Content-Type: application/json' -d @- http://localhost:5000/translate | jq .translatedText)
+  [ "$first" = 1 ] || printf ','
+  first=0
+  printf '"%s":%s' "$target" "$text"
+done
+printf '}'
+```
+
+Make it executable (`chmod +x ~/bin/translate-i18n`), then test it outside Neovim:
+
+```sh
+echo '{"source":"Save","source_locale":"en-US","targets":["fr","de"]}' | ~/bin/translate-i18n
+```
+
+#### A Lua function
+
+The most flexible option. Call `callback(nil, translations)` with a table of locale to text, or `callback("message")` to report an error. Calling it later, from a `vim.system` or timer callback, is fine: translations always run in the background.
+
+```lua
+opts = {
+  translate = {
+    provider = function(request, callback)
+      -- request: { key, source_locale, source, targets, schema_locales }
+      local result = {}
+      for _, locale in ipairs(request.targets) do
+        result[locale] = "[" .. locale .. "] " .. request.source
+      end
+      callback(nil, result)
+    end,
+  },
+},
+```
+
+#### Options for every provider
+
+```lua
+translate = {
+  provider = "claude_code",
+  auto = true, -- translate the empty locales when the editor float closes (false: only <C-t> / :I18n translate)
+  context = "E-commerce site for kids' clothing.", -- extra instruction for the Claude providers: tone, domain, vocabulary
+}
+```
+
+**One provider per project:** set `translate` under `projects`, keyed by the project root:
+
+```lua
+opts = {
+  translate = { provider = "claude_code" },
+  projects = {
+    ["~/Code/work-app"] = { translate = { provider = "command", command = { "company-translate" } } },
+  },
+},
+```
+
+`translate` can't be set from a committed `.i18n-ts.json`: it sends text to a third party and can run commands. Each developer chooses it in their own config.
 
 Lua API: `require("i18n-ts").definition()` returns `false` when there is no key under the cursor, so it can sit in front of `vim.lsp.buf.definition()` (see the `gd` mapping above).
 
