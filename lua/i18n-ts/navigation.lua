@@ -46,7 +46,7 @@ function M.show()
     local value = store:get(key, l)
     table.insert(
       lines,
-      ("`%s`  %s"):format(l .. string.rep(" ", width - #l), value and display.format(value, 120) or "_missing_")
+      ("`%s`%s  %s"):format(l, string.rep(" ", width - #l), value and display.format(value, 120) or "_missing_")
     )
   end
   vim.lsp.util.open_floating_preview(lines, "markdown", { border = "rounded", focus_id = "i18n-ts" })

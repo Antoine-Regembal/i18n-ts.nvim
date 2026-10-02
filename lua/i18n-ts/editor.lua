@@ -542,6 +542,8 @@ function M.open(project, key)
   vim.bo[buf].buftype = "acwrite"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
+  -- Values are free text: completion menus (blink.cmp, nvim-cmp) only get in the way here.
+  vim.b[buf].completion = false
   vim.api.nvim_buf_set_name(buf, ("translations://edit/%s/%d"):format(key, buf))
   refill(buf)
 
