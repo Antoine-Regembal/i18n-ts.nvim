@@ -45,6 +45,7 @@ function M.project(buf)
           compiled = scanner.compile(cfg.functions, cfg.patterns),
           locale = store.default_locale,
           enabled = true,
+          pending = {},
         }
       or false
     M.projects[root] = project
@@ -96,6 +97,41 @@ local function schedule(buf, with_diagnostics)
   )
 end
 
+local spinner
+
+--- Animates the "translating…" indicator of every attached buffer while a project has pending translations.
+function M.track_pending(project)
+  if M.projects[project.root] == nil then
+    M.projects[project.root] = project
+  end
+  M.refresh_project(project)
+  if spinner then
+    return
+  end
+  spinner = vim.uv.new_timer()
+  spinner:start(
+    120,
+    120,
+    vim.schedule_wrap(function()
+      display.frame = display.frame % #display.spinner + 1
+      local busy = false
+      for _, p in pairs(M.projects) do
+        if p and p.pending and next(p.pending) then
+          busy = true
+          each_attached(p, function(buf)
+            display.render(buf, p)
+          end)
+        end
+      end
+      if not busy and spinner then
+        spinner:stop()
+        spinner:close()
+        spinner = nil
+      end
+    end)
+  )
+end
+
 function M.refresh_project(project)
   each_attached(project, function(buf)
     update(buf, true)
@@ -138,6 +174,7 @@ function M.setup(opts)
   vim.api.nvim_set_hl(0, "I18nTsTranslation", { link = "Comment", default = true })
   vim.api.nvim_set_hl(0, "I18nTsMissing", { link = "DiagnosticWarn", default = true })
   vim.api.nvim_set_hl(0, "I18nTsLocale", { link = "Label", default = true })
+  vim.api.nvim_set_hl(0, "I18nTsPending", { link = "DiagnosticInfo", default = true })
   vim.api.nvim_clear_autocmds({ group = group })
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
@@ -150,7 +187,7 @@ function M.setup(opts)
     group = group,
     pattern = "*.json",
     callback = function(ev)
-      local path = vim.fs.normalize(vim.api.nvim_buf_get_name(ev.buf))
+      local path = root_mod.real(vim.api.nvim_buf_get_name(ev.buf))
       for _, project in pairs(M.projects) do
         if project and project.store:owns(path) then
           project.store:reload_path(path)

@@ -249,7 +249,12 @@ Each line holds only the value: the locale label isn't text you can edit. The fl
 
 `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
 
-With a translation provider set, writing the float also fills every locale still empty, translated from the default locale. Type the default locale's value, `:w`, and the other locales are written too.
+With a translation provider set, writing the float also fills every locale still empty, translated from the default locale. Type the default locale's value, then `<CR>` to save and close. The translation keeps running in the background and is written to the files when it arrives:
+
+- the key's inline preview shows a live `⠋ translating 12 locales…` indicator in every open buffer, until the result is written;
+- if the float is still open, the translated values appear on its empty lines;
+- a value you typed in the meantime is never overwritten: only locales still empty when the result arrives are filled;
+- you can keep editing other keys, and several keys can be translated at once.
 
 ### Machine translation
 
@@ -304,6 +309,8 @@ Lua API: `require("i18n-ts").definition()` returns `false` when there is no key 
 | --- | --- |
 | `I18nTsTranslation` | links to `Comment` |
 | `I18nTsMissing` | links to `DiagnosticWarn` |
+| `I18nTsLocale` | links to `Label` (locale labels in the editor) |
+| `I18nTsPending` | links to `DiagnosticInfo` (translation in progress) |
 
 ## Limitations
 

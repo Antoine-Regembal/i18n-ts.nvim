@@ -55,7 +55,7 @@ end
 --- Key defined on the cursor line when `buf` is one of the project's translation files.
 function M.key_in_json(buf, store)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
-  local path = vim.fs.normalize(vim.api.nvim_buf_get_name(buf))
+  local path = require("i18n-ts.root").real(vim.api.nvim_buf_get_name(buf))
   local file = store.by_path[path]
   if not file then
     return nil

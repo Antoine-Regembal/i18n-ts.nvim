@@ -2,6 +2,9 @@ local scanner = require("i18n-ts.scanner")
 
 local M = {}
 
+M.spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+M.frame = 1
+
 M.ns = vim.api.nvim_create_namespace("i18n-ts")
 M.diag_ns = vim.api.nvim_create_namespace("i18n-ts.diagnostics")
 
@@ -39,11 +42,24 @@ function M.render(buf, project)
   local lines = vim.api.nvim_buf_get_lines(buf, first, last, false)
   local locale = project.locale
   local inline = cfg.display.mode == "inline"
+  local pending = project.pending or {}
   for _, hit in ipairs(scanner.scan(lines, project.compiled, first)) do
     local value = project.store:get(hit.key, locale)
+    local chunks = {}
     if value then
+      table.insert(chunks, { cfg.display.prefix .. M.format(value, cfg.display.max_len), "I18nTsTranslation" })
+    end
+    local job = pending[hit.key]
+    if job then
+      local n = #job.targets
+      table.insert(chunks, {
+        (" %s translating %d locale%s…"):format(M.spinner[M.frame], n, n > 1 and "s" or ""),
+        "I18nTsPending",
+      })
+    end
+    if #chunks > 0 then
       vim.api.nvim_buf_set_extmark(buf, M.ns, hit.lnum, inline and hit.call_end or hit.col, {
-        virt_text = { { cfg.display.prefix .. M.format(value, cfg.display.max_len), "I18nTsTranslation" } },
+        virt_text = chunks,
         virt_text_pos = inline and "inline" or "eol",
         hl_mode = "combine",
         priority = 120,

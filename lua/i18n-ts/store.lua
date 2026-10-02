@@ -1,3 +1,5 @@
+local root_mod = require("i18n-ts.root")
+
 local M = {}
 
 local parsers = {}
@@ -95,7 +97,7 @@ function M.resolve_sources(root, sources)
       local rel = abs:sub(#root + 2)
       local caps = { rel:match(pat) }
       if #caps == #names and not seen[abs] then
-        local file = { path = vim.fs.normalize(abs), source = source }
+        local file = { path = root_mod.real(abs), source = source }
         for i, name in ipairs(names) do
           file[name] = caps[i]
         end
@@ -229,7 +231,7 @@ function Store:has_files()
 end
 
 function Store:owns(path)
-  return self.by_path[vim.fs.normalize(path)] ~= nil
+  return self.by_path[root_mod.real(path)] ~= nil
 end
 
 local function mtime(path)
@@ -314,7 +316,7 @@ function Store:load_async(on_done)
 end
 
 function Store:reload_path(path)
-  local file = self.by_path[vim.fs.normalize(path)]
+  local file = self.by_path[root_mod.real(path)]
   if file and self.loaded[file.locale] then
     self:load_locale(file.locale)
   end

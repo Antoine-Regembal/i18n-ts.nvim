@@ -103,6 +103,23 @@ test("setup().projects overrides the project file", function()
   eq(store.default_locale, "de")
 end)
 
+test("roots and translation files resolve symlinks, like buffer names do", function()
+  local real = vim.fn.tempname()
+  vim.fn.mkdir(real .. "/locales", "p")
+  vim.fn.writefile({ "{}" }, real .. "/package.json")
+  vim.fn.writefile({ "{", '  "k": "v"', "}" }, real .. "/locales/en.json")
+  local link = vim.fn.tempname()
+  vim.uv.fs_symlink(real, link)
+  config.setup({ root_markers = { "package.json" } })
+  local root = require("i18n-ts.root").find(link .. "/locales", { "package.json" })
+  eq(root, require("i18n-ts.root").real(real))
+  local store = store_mod.new(link, (config.for_root(link)))
+  eq(store:owns(link .. "/locales/en.json"), true)
+  eq(store:owns(real .. "/locales/en.json"), true)
+  vim.fn.delete(link)
+  vim.fn.delete(real, "rf")
+end)
+
 test("auto-detect never enters node_modules", function()
   local root = fixtures .. "/custom"
   local sources = store_mod.detect_sources(root, config.defaults.auto_detect)
@@ -270,6 +287,7 @@ end)
 local function tmp_project(files, opts)
   local root = vim.fn.tempname()
   vim.fn.mkdir(root .. "/locales", "p")
+  root = require("i18n-ts.root").real(root)
   vim.fn.writefile({ "{}" }, root .. "/package.json")
   for locale, lines in pairs(files) do
     vim.fn.writefile(lines, root .. "/locales/" .. locale .. ".json")
@@ -604,6 +622,69 @@ test("editor machine-translates the empty locales from the default one", functio
   eq(p.store:get("greet", "fr"), "Bonjour")
   eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "Hello", "Hallo", "Bonjour" })
   editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("translation keeps running after the float is closed, with a live indicator", function()
+  local i18n = require("i18n-ts")
+  local display = require("i18n-ts.display")
+  local finish
+  local p = tmp_project({ en = { "{", "}" }, fr = { "{", "}" }, de = { "{", "}" } }, {
+    translate = {
+      provider = function(_, cb)
+        finish = function()
+          cb(nil, { fr = "Bonjour", de = "Hallo" })
+        end
+      end,
+    },
+  })
+  vim.fn.writefile({ "<template>{{ t('greet') }}</template>" }, p.root .. "/Page.vue")
+  i18n.projects[p.root] = p
+  vim.cmd.edit(p.root .. "/Page.vue")
+  local source = vim.api.nvim_get_current_buf()
+  vim.bo[source].filetype = "vue"
+  i18n.attach(source)
+
+  local buf = editor.open(p, "greet")
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Hello" })
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  editor.close(buf)
+  assert(p.pending.greet, "translation should be pending after the float is closed")
+
+  local function marks_text()
+    local text = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(source, display.ns, 0, -1, { details = true })) do
+      for _, chunk in ipairs(m[4].virt_text or {}) do
+        table.insert(text, chunk[1])
+      end
+    end
+    return table.concat(text)
+  end
+  assert(
+    vim.wait(1000, function()
+      return marks_text():find("translating 2 locales", 1, true) ~= nil
+    end),
+    "no indicator in the source buffer: " .. marks_text()
+  )
+
+  require("i18n-ts.edit").set(p.store, "greet", { de = "Guten Tag" })
+  finish()
+  assert(vim.wait(1000, function()
+    return p.store:get("greet", "fr") ~= nil
+  end))
+  eq(p.store:get("greet", "fr"), "Bonjour")
+  eq(p.store:get("greet", "de"), "Guten Tag")
+  eq(p.pending.greet, nil)
+  assert(
+    vim.wait(1000, function()
+      return not marks_text():find("translating", 1, true)
+    end),
+    "indicator still shown: " .. marks_text()
+  )
+  vim.cmd("silent! %bwipeout!")
+  i18n.projects[p.root] = nil
   vim.fn.delete(p.root, "rf")
 end)
 

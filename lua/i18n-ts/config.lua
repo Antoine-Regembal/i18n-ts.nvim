@@ -95,7 +95,7 @@ function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
   local projects = {}
   for path, override in pairs(M.options.projects or {}) do
-    projects[vim.fs.normalize(vim.fn.expand(path))] = override
+    projects[require("i18n-ts.root").real(vim.fn.expand(path))] = override
   end
   M.options.projects = projects
   return M.options

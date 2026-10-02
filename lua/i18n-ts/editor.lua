@@ -4,7 +4,7 @@ local translate = require("i18n-ts.translate")
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("i18n-ts.editor")
----@type table<integer, { project: table, key: string, locales: string[], win: integer|nil, busy: boolean }>
+---@type table<integer, { project: table, key: string, locales: string[], win: integer|nil }>
 local sessions = {}
 
 local function notify(msg, level)
@@ -83,81 +83,100 @@ local function refill(buf)
   decorate(buf)
 end
 
---- Machine-translates the locales still empty after a write, from the default locale.
-local function translate_missing(buf)
-  local s = sessions[buf]
-  local tcfg = s.project.cfg.translate
-  local store = s.project.store
-  if not tcfg.provider or not tcfg.auto then
-    return
-  end
-  local source = store:get(s.key, store.default_locale)
+local function missing_locales(store, key)
   local targets = {}
-  for _, l in ipairs(s.locales) do
-    if l ~= store.default_locale and not store:get(s.key, l) then
+  for _, l in ipairs(store.locales) do
+    if l ~= store.default_locale and not store:get(key, l) then
       table.insert(targets, l)
     end
   end
-  if #targets == 0 then
-    return
-  end
-  if not source then
-    return notify(("fill in %s first to translate the other locales"):format(store.default_locale))
-  end
-  s.busy = true
-  set_title(buf, " · translating…")
-  M.translate_key(s.project, s.key, targets, function()
-    s.busy = false
-    set_title(buf)
-    refill(buf)
-  end)
+  return targets
 end
 
---- Fills `targets` (default: every missing locale) of `key` with machine translations of the default locale.
+--- Puts freshly translated values into the open floats for `key`, on lines still empty only.
+local function show_in_floats(project, key)
+  for buf, s in pairs(sessions) do
+    if s.project == project and s.key == key and vim.api.nvim_buf_is_valid(buf) then
+      local modified = vim.bo[buf].modified
+      for i, l in ipairs(s.locales) do
+        local value = project.store:get(key, l)
+        local line = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1]
+        if value and line == "" then
+          vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { to_line(value) })
+        end
+      end
+      vim.bo[buf].modified = modified
+      decorate(buf)
+      set_title(buf)
+    end
+  end
+end
+
+--- Fills `targets` (default: every missing locale) of `key` with machine translations of the default locale,
+--- in the background: closing the float doesn't stop it, and values typed meanwhile are kept.
 function M.translate_key(project, key, targets, on_done)
   local store = project.store
   local tcfg = project.cfg.translate
   local source = store:get(key, store.default_locale)
+  project.pending = project.pending or {}
   if not tcfg.provider then
     return notify("set translate.provider to enable machine translation", vim.log.levels.WARN)
   end
   if not source then
     return notify(("'%s' has no %s value to translate from"):format(key, store.default_locale), vim.log.levels.WARN)
   end
-  if not targets then
-    targets = {}
-    for _, l in ipairs(store.locales) do
-      if l ~= store.default_locale and not store:get(key, l) then
-        table.insert(targets, l)
-      end
-    end
+  if project.pending[key] then
+    return notify(("'%s' is already being translated"):format(key))
   end
+  targets = targets or missing_locales(store, key)
   if #targets == 0 then
     return notify(("'%s' is translated in every locale"):format(key))
   end
+  project.pending[key] = { targets = targets, started = vim.uv.now() }
+  require("i18n-ts").track_pending(project)
   local req = { key = key, source_locale = store.default_locale, source = source, targets = targets }
   translate.run(tcfg, req, function(err, result, locale_errors)
+    project.pending[key] = nil
     local written, errors = {}, vim.deepcopy(locale_errors)
     if err then
       errors[translate.label(tcfg)] = err
     else
-      written, errors = edit.set(store, key, result)
+      local still_missing = {}
+      for _, l in ipairs(missing_locales(store, key)) do
+        still_missing[l] = result[l]
+      end
+      written, errors = edit.set(store, key, still_missing)
       errors = vim.tbl_extend("keep", errors, locale_errors)
     end
     finish({ project = project, key = key }, written, errors, ("machine-translated (%s)"):format(translate.label(tcfg)))
+    show_in_floats(project, key)
     if on_done then
       on_done()
     end
   end)
 end
 
+--- Machine-translates the locales still empty after a write, from the default locale.
+local function translate_missing(buf)
+  local s = sessions[buf]
+  local tcfg = s.project.cfg.translate
+  local store = s.project.store
+  if not tcfg.provider or not tcfg.auto or (s.project.pending or {})[s.key] then
+    return
+  end
+  local targets = missing_locales(store, s.key)
+  if #targets == 0 then
+    return
+  end
+  if not store:get(s.key, store.default_locale) then
+    return notify(("fill in %s first to translate the other locales"):format(store.default_locale))
+  end
+  set_title(buf, (" · translating %d locales…"):format(#targets))
+  M.translate_key(s.project, s.key, targets)
+end
+
 local function write(buf)
   local s = sessions[buf]
-  if s.busy then
-    vim.wait(30000, function()
-      return not s.busy
-    end, 50)
-  end
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   if #lines ~= #s.locales then
     error(("i18n-ts: keep one line per locale (%d expected, %d found)"):format(#s.locales, #lines), 0)
@@ -256,7 +275,7 @@ function M.open(project, key)
     store:ensure(l)
   end
   local buf = vim.api.nvim_create_buf(false, true)
-  sessions[buf] = { project = project, key = key, locales = vim.deepcopy(store.locales), busy = false }
+  sessions[buf] = { project = project, key = key, locales = vim.deepcopy(store.locales) }
   vim.bo[buf].buftype = "acwrite"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
