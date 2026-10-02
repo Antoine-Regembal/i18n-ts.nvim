@@ -1,5 +1,6 @@
 local edit = require("i18n-ts.edit")
 local translate = require("i18n-ts.translate")
+local display = require("i18n-ts.display")
 
 local M = {}
 
@@ -32,7 +33,13 @@ local function decorate(buf)
       virt_text_pos = "inline",
       right_gravity = false,
     })
-    if not s.project.store:get(s.key, l) then
+    local job = (s.project.pending or {})[s.key]
+    if job and vim.tbl_contains(job.targets, l) then
+      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
+        virt_text = { { display.spinner[display.frame] .. " translating…", "I18nTsPending" } },
+        virt_text_pos = "eol",
+      })
+    elseif not s.project.store:get(s.key, l) then
       vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
         virt_text = { { "missing", "I18nTsMissing" } },
         virt_text_pos = "eol",
@@ -41,10 +48,30 @@ local function decorate(buf)
   end
 end
 
-local function set_title(buf, suffix)
+local function set_title(buf)
   local s = sessions[buf]
-  if s.win and vim.api.nvim_win_is_valid(s.win) then
-    vim.api.nvim_win_set_config(s.win, { title = (" %s%s "):format(s.key, suffix or "") })
+  if not (s.win and vim.api.nvim_win_is_valid(s.win)) then
+    return
+  end
+  local title = { { (" %s "):format(s.key), "FloatTitle" } }
+  local job = (s.project.pending or {})[s.key]
+  if job then
+    local n = #job.targets
+    table.insert(title, {
+      ("· %s translating %d locale%s "):format(display.spinner[display.frame], n, n > 1 and "s" or ""),
+      "I18nTsPending",
+    })
+  end
+  vim.api.nvim_win_set_config(s.win, { title = title, title_pos = "center" })
+end
+
+--- Redraws the loaders of the open floats; called on every spinner frame.
+function M.tick()
+  for buf, s in pairs(sessions) do
+    if vim.api.nvim_buf_is_valid(buf) and (s.project.pending or {})[s.key] then
+      decorate(buf)
+      set_title(buf)
+    end
   end
 end
 
@@ -171,8 +198,11 @@ local function translate_missing(buf)
   if not store:get(s.key, store.default_locale) then
     return notify(("fill in %s first to translate the other locales"):format(store.default_locale))
   end
-  set_title(buf, (" · translating %d locales…"):format(#targets))
   M.translate_key(s.project, s.key, targets)
+  if vim.api.nvim_buf_is_valid(buf) then
+    decorate(buf)
+    set_title(buf)
+  end
 end
 
 local function write(buf)

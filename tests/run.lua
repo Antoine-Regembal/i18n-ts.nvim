@@ -688,6 +688,61 @@ test("translation keeps running after the float is closed, with a live indicator
   vim.fn.delete(p.root, "rf")
 end)
 
+test("the editor float shows a loader on the lines being translated", function()
+  local finish
+  local p = tmp_project({ en = { "{", "}" }, fr = { "{", "}" }, de = { "{", "}" } }, {
+    translate = {
+      provider = function(_, cb)
+        finish = function()
+          cb(nil, { fr = "Bonjour", de = "Hallo" })
+        end
+      end,
+    },
+  })
+  local buf = editor.open(p, "greet")
+  local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Hello" })
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  local function line_marks(row)
+    local text = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { row, 0 }, { row, -1 }, { details = true })) do
+      for _, chunk in ipairs(m[4].virt_text or {}) do
+        table.insert(text, chunk[1])
+      end
+    end
+    return table.concat(text)
+  end
+  local function title()
+    local parts = {}
+    for _, chunk in ipairs(vim.api.nvim_win_get_config(win).title or {}) do
+      table.insert(parts, chunk[1])
+    end
+    return table.concat(parts)
+  end
+  assert(line_marks(1):find("translating", 1, true), "no loader on the de line: " .. line_marks(1))
+  assert(line_marks(2):find("translating", 1, true), "no loader on the fr line: " .. line_marks(2))
+  assert(not line_marks(0):find("translating", 1, true), "the source line should not show a loader")
+  assert(title():find("translating 2 locales", 1, true), "no loader in the title: " .. title())
+  local first_frame = title()
+  assert(
+    vim.wait(1000, function()
+      return title() ~= first_frame
+    end),
+    "the title loader is not animated"
+  )
+  finish()
+  assert(vim.wait(1000, function()
+    return vim.api.nvim_buf_get_lines(buf, 1, 2, false)[1] == "Hallo"
+  end))
+  vim.wait(20)
+  eq(line_marks(1):find("translating", 1, true), nil)
+  eq(title():find("translating", 1, true), nil)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
 test("editor does not translate when the default locale is empty", function()
   local called = false
   local p = tmp_project({ en = { "{", "}" }, fr = { "{", "}" } }, {

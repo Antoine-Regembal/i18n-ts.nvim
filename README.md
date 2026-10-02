@@ -252,7 +252,7 @@ Each line holds only the value: the locale label isn't text you can edit. The fl
 With a translation provider set, writing the float also fills every locale still empty, translated from the default locale. Type the default locale's value, then `<CR>` to save and close. The translation keeps running in the background and is written to the files when it arrives:
 
 - the key's inline preview shows a live `⠋ translating 12 locales…` indicator in every open buffer, until the result is written;
-- if the float is still open, the translated values appear on its empty lines;
+- if the float is still open, each line being translated shows the same loader, so does the title (`key · ⠋ translating 12 locales`), and the values appear on the empty lines as soon as they arrive;
 - a value you typed in the meantime is never overwritten: only locales still empty when the result arrives are filled;
 - you can keep editing other keys, and several keys can be translated at once.
 

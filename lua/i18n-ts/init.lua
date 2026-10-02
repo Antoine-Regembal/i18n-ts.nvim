@@ -114,6 +114,7 @@ function M.track_pending(project)
     120,
     vim.schedule_wrap(function()
       display.frame = display.frame % #display.spinner + 1
+      require("i18n-ts.editor").tick()
       local busy = false
       for _, p in pairs(M.projects) do
         if p and p.pending and next(p.pending) then
