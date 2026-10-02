@@ -20,49 +20,169 @@ local function from_line(line)
   return (line:gsub("\\n", "\n"))
 end
 
+local function pad(text, width)
+  return text .. string.rep(" ", math.max(width - vim.fn.strdisplaywidth(text), 0))
+end
+
+--- Keymap legend, two entries per row; translation entries only with a provider.
+local function legend_items(s)
+  local items = {
+    { ":w", "save" },
+    { "<CR>", "save & close" },
+    { "<Tab>", "next locale" },
+    { "dd", "clear value" },
+  }
+  if s.project.cfg.translate.provider then
+    table.insert(items, 2, { "<C-t>", "translate empty" })
+    table.insert(items, 4, { "<A-t>", "re-translate all" })
+  end
+  vim.list_extend(items, { { "q", "close" }, { "?", "hide help" } })
+  return items
+end
+
+local KEY_WIDTH, DESC_WIDTH = 7, 19
+
+local function legend_lines(s, width)
+  local items = legend_items(s)
+  local lines = { { { string.rep("─", width), "FloatBorder" } } }
+  for i = 1, #items, 2 do
+    local row = { { " " } }
+    for j = i, math.min(i + 1, #items) do
+      table.insert(row, { pad(items[j][1], KEY_WIDTH), "I18nTsKey" })
+      table.insert(row, { pad(items[j][2], DESC_WIDTH), "Comment" })
+    end
+    table.insert(lines, row)
+  end
+  return lines
+end
+
+local function counts(s, buf)
+  local missing, modified = 0, 0
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for i, l in ipairs(s.locales) do
+    local value = s.project.store:get(s.key, l)
+    if not value then
+      missing = missing + 1
+    end
+    if lines[i] and lines[i] ~= "" and lines[i] ~= to_line(value) then
+      modified = modified + 1
+    end
+  end
+  return missing, modified
+end
+
 local function decorate(buf)
   local s = sessions[buf]
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  local store = s.project.store
   local width = 0
   for _, l in ipairs(s.locales) do
     width = math.max(width, vim.fn.strdisplaywidth(l))
   end
+  local job = (s.project.pending or {})[s.key]
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for i, l in ipairs(s.locales) do
+    local is_source = l == store.default_locale
     vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
-      virt_text = { { l .. string.rep(" ", width - vim.fn.strdisplaywidth(l)) .. " │ ", "I18nTsLocale" } },
+      virt_text = {
+        { is_source and " ★ " or "   ", "I18nTsSource" },
+        { pad(l, width), is_source and "I18nTsSource" or "I18nTsLocale" },
+        { " │ ", "FloatBorder" },
+      },
       virt_text_pos = "inline",
       right_gravity = false,
     })
-    local job = (s.project.pending or {})[s.key]
+    local value = store:get(s.key, l)
+    local badges = {}
+    local line = lines[i] or ""
     if job and vim.tbl_contains(job.targets, l) then
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
-        virt_text = { { display.spinner[display.frame] .. " translating…", "I18nTsPending" } },
-        virt_text_pos = "eol",
-      })
-    elseif not s.project.store:get(s.key, l) then
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
-        virt_text = { { "missing", "I18nTsMissing" } },
-        virt_text_pos = "eol",
-      })
+      table.insert(badges, { display.spinner[display.frame] .. " translating…", "I18nTsPending" })
+    elseif line == "" and value then
+      table.insert(badges, { "○ emptied, kept on save", "Comment" })
+    elseif line == "" then
+      table.insert(badges, { "○ missing", "I18nTsMissing" })
     end
+    if line ~= "" and line ~= to_line(value) then
+      table.insert(badges, { "● modified", "I18nTsModified" })
+    end
+    if is_source then
+      table.insert(badges, { "source", "I18nTsSource" })
+    end
+    if #badges > 0 then
+      local chunks = { { "  " } }
+      for b, badge in ipairs(badges) do
+        if b > 1 then
+          table.insert(chunks, { "  " })
+        end
+        table.insert(chunks, badge)
+      end
+      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, { virt_text = chunks, virt_text_pos = "eol" })
+    end
+  end
+  if s.help and #s.locales > 0 then
+    vim.api.nvim_buf_set_extmark(buf, ns, #s.locales - 1, 0, {
+      virt_lines = legend_lines(s, s.width or 50),
+    })
   end
 end
 
+local function window_height(s)
+  local legend = s.help and (math.ceil(#legend_items(s) / 2) + 1) or 0
+  return math.max(math.min(#s.locales + legend, vim.o.lines - 6), 1)
+end
+
+--- Title (key and translation progress) and footer (counts and provider) of the float.
 local function set_title(buf)
   local s = sessions[buf]
   if not (s.win and vim.api.nvim_win_is_valid(s.win)) then
     return
   end
-  local title = { { (" %s "):format(s.key), "FloatTitle" } }
+  local title = { { " i18n ", "I18nTsTitleTag" }, { " " .. s.key .. " ", "FloatTitle" } }
   local job = (s.project.pending or {})[s.key]
   if job then
     local n = #job.targets
     table.insert(title, {
-      ("· %s translating %d locale%s "):format(display.spinner[display.frame], n, n > 1 and "s" or ""),
+      ("%s translating %d locale%s "):format(display.spinner[display.frame], n, n > 1 and "s" or ""),
       "I18nTsPending",
     })
   end
-  vim.api.nvim_win_set_config(s.win, { title = title, title_pos = "center" })
+  local config = { title = title, title_pos = "center" }
+  if vim.fn.has("nvim-0.10") == 1 then
+    local missing, modified = counts(s, buf)
+    local footer = { { " " } }
+    local function add(text, hl)
+      if #footer > 1 then
+        table.insert(footer, { " · ", "FloatBorder" })
+      end
+      table.insert(footer, { text, hl })
+    end
+    add(
+      missing == 0 and "✓ all locales" or ("%d missing"):format(missing),
+      missing == 0 and "I18nTsDone" or "I18nTsMissing"
+    )
+    if modified > 0 then
+      add(("%d modified"):format(modified), "I18nTsModified")
+    end
+    local tcfg = s.project.cfg.translate
+    add(tcfg.provider and translate.label(tcfg) or "translation off", "Comment")
+    if not s.help then
+      add("? help", "I18nTsKey")
+    end
+    table.insert(footer, { " " })
+    config.footer = footer
+    config.footer_pos = "center"
+  end
+  vim.api.nvim_win_set_config(s.win, config)
+end
+
+local function toggle_help(buf)
+  local s = sessions[buf]
+  s.help = not s.help
+  if s.win and vim.api.nvim_win_is_valid(s.win) then
+    vim.api.nvim_win_set_config(s.win, { height = window_height(s) })
+  end
+  decorate(buf)
+  set_title(buf)
 end
 
 --- Redraws the loaders of the open floats; called on every spinner frame.
@@ -332,6 +452,8 @@ local function check_structure(buf)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   if #lines == #s.locales then
     s.snapshot = lines
+    decorate(buf)
+    set_title(buf)
     return
   end
   local win = s.win and vim.api.nvim_win_is_valid(s.win) and s.win
@@ -390,8 +512,20 @@ function M.open(project, key)
   for _, l in ipairs(store.locales) do
     store:ensure(l)
   end
+  for group, link in pairs({
+    I18nTsLocale = "Label",
+    I18nTsSource = "Special",
+    I18nTsKey = "Special",
+    I18nTsModified = "DiagnosticHint",
+    I18nTsMissing = "DiagnosticWarn",
+    I18nTsPending = "DiagnosticInfo",
+    I18nTsDone = "DiagnosticOk",
+    I18nTsTitleTag = "Search",
+  }) do
+    vim.api.nvim_set_hl(0, group, { link = link, default = true })
+  end
   local buf = vim.api.nvim_create_buf(false, true)
-  sessions[buf] = { project = project, key = key, locales = vim.deepcopy(store.locales) }
+  sessions[buf] = { project = project, key = key, locales = vim.deepcopy(store.locales), help = true }
   vim.bo[buf].buftype = "acwrite"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
@@ -403,27 +537,25 @@ function M.open(project, key)
     label = math.max(label, #l)
     longest = math.max(longest, vim.fn.strdisplaywidth(to_line(store:get(key, l))))
   end
-  local width = math.min(math.max(label + 3 + longest + 10, 50), vim.o.columns - 4)
-  local height = math.min(#store.locales, vim.o.lines - 6)
-  local win_opts = {
+  local legend_width = 1 + 2 * (KEY_WIDTH + DESC_WIDTH)
+  local width = math.min(math.max(label + 6 + longest + 26, legend_width, 56), vim.o.columns - 4)
+  sessions[buf].width = width
+  local height = window_height(sessions[buf])
+  local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
-    row = math.floor((vim.o.lines - height) / 2) - 1,
+    row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0),
     col = math.floor((vim.o.columns - width) / 2),
     width = width,
     height = height,
     style = "minimal",
     border = "rounded",
-    title = (" %s "):format(key),
-    title_pos = "center",
-  }
-  if vim.fn.has("nvim-0.10") == 1 then
-    win_opts.footer = " :w save · <C-t> translate empty · <CR> save & close · q close "
-    win_opts.footer_pos = "center"
-  end
-  local win = vim.api.nvim_open_win(buf, true, win_opts)
+  })
   sessions[buf].win = win
   vim.wo[win].wrap = false
   vim.wo[win].cursorline = true
+  vim.wo[win].winhighlight = "Normal:NormalFloat,FloatBorder:FloatBorder"
+  decorate(buf)
+  set_title(buf)
 
   vim.api.nvim_create_autocmd("BufWriteCmd", {
     buffer = buf,
@@ -478,6 +610,9 @@ function M.open(project, key)
   map("<A-t>", function()
     M.retranslate_now(buf)
   end, { "n", "i" })
+  map("?", function()
+    toggle_help(buf)
+  end)
   map("q", function()
     M.close(buf)
   end)

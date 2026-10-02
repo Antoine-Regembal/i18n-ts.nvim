@@ -793,6 +793,98 @@ test("the editor float shows a loader on the lines being translated", function()
   vim.fn.delete(p.root, "rf")
 end)
 
+local function float_ui(buf)
+  local win = vim.fn.bufwinid(buf)
+  local virt_lines, badges = {}, {}
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })) do
+    for _, line in ipairs(m[4].virt_lines or {}) do
+      local text = {}
+      for _, chunk in ipairs(line) do
+        table.insert(text, chunk[1])
+      end
+      table.insert(virt_lines, table.concat(text))
+    end
+    if m[4].virt_text_pos == "eol" then
+      local text = {}
+      for _, chunk in ipairs(m[4].virt_text) do
+        table.insert(text, chunk[1])
+      end
+      badges[m[2] + 1] = table.concat(text)
+    end
+  end
+  local footer = {}
+  for _, chunk in ipairs(vim.api.nvim_win_get_config(win).footer or {}) do
+    table.insert(footer, chunk[1])
+  end
+  return {
+    legend = table.concat(virt_lines, "\n"),
+    badges = badges,
+    footer = table.concat(footer),
+    height = vim.api.nvim_win_get_height(win),
+  }
+end
+
+test("the float shows a keymap legend, toggled with ?", function()
+  local p = tmp_project(
+    { en = { "{", '  "k": "K"', "}" }, fr = { "{", "}" } },
+    { translate = { provider = "claude_code" } }
+  )
+  local buf = editor.open(p, "k")
+  local ui = float_ui(buf)
+  for _, text in ipairs({ ":w", "save", "<C-t>", "translate empty", "<A-t>", "re-translate all", "dd", "clear value" }) do
+    assert(ui.legend:find(text, 1, true), "legend misses '" .. text .. "':\n" .. ui.legend)
+  end
+  local full = ui.height
+  vim.api.nvim_feedkeys("?", "x", false)
+  ui = float_ui(buf)
+  eq(ui.legend, "")
+  eq(ui.height, 2)
+  assert(ui.footer:find("? help", 1, true), ui.footer)
+  vim.api.nvim_feedkeys("?", "x", false)
+  eq(float_ui(buf).height, full)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("the legend hides translation keys when no provider is set", function()
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" } })
+  local buf = editor.open(p, "k")
+  local ui = float_ui(buf)
+  eq(ui.legend:find("<C-t>", 1, true), nil)
+  assert(ui.footer:find("translation off", 1, true), ui.footer)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("badges and footer follow the edits live", function()
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", "}" }, de = { "{", '  "k": "Kd"', "}" } })
+  local buf = editor.open(p, "k")
+  local ui = float_ui(buf)
+  assert(ui.badges[1]:find("source", 1, true), vim.inspect(ui.badges))
+  assert(ui.badges[3]:find("missing", 1, true), vim.inspect(ui.badges))
+  eq(ui.badges[2], nil)
+  assert(ui.footer:find("1 missing", 1, true), ui.footer)
+  vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Kd edited" })
+  vim.wait(30)
+  ui = float_ui(buf)
+  assert(ui.badges[2]:find("modified", 1, true), vim.inspect(ui.badges))
+  assert(ui.footer:find("1 modified", 1, true), ui.footer)
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  vim.wait(30)
+  ui = float_ui(buf)
+  eq(ui.badges[2], nil)
+  eq(ui.footer:find("modified", 1, true), nil)
+  vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "" })
+  vim.wait(30)
+  ui = float_ui(buf)
+  assert(ui.badges[2]:find("emptied, kept on save", 1, true), vim.inspect(ui.badges))
+  eq(ui.footer:find("modified", 1, true), nil)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
 local function with_select(answer, fn)
   local prompts = {}
   local original = vim.ui.select

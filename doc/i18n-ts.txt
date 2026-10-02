@@ -81,6 +81,7 @@ so the float always has one line per locale.
     o O J               Disabled.
     :w                  Save the changed lines, add the filled-in locales.
     <CR> (normal)       Save and close.
+    ?                   Hide / show the keymap legend.
     <C-t>               Save, then translate the empty locales now.
     <A-t>               Save, then re-translate every locale, replacing
                         existing values (asks first).
@@ -125,5 +126,10 @@ I18nTsTranslation       Inline translation. Links to |hl-Comment|.
 I18nTsMissing           Links to DiagnosticWarn.
 I18nTsLocale            Locale labels in the editor. Links to |hl-Label|.
 I18nTsPending           Translation in progress. Links to DiagnosticInfo.
+I18nTsSource            Default locale in the editor. Links to |hl-Special|.
+I18nTsModified          Unsaved line in the editor. Links to DiagnosticHint.
+I18nTsKey               Keys in the editor legend. Links to |hl-Special|.
+I18nTsDone              Every locale translated. Links to DiagnosticOk.
+I18nTsTitleTag          `i18n` tag in the editor title. Links to |hl-Search|.
 
  vim:tw=78:ts=8:ft=help:norl:

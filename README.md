@@ -230,12 +230,20 @@ opts = {
 `:I18n edit` opens a float with one line per locale, the default locale first:
 
 ```
-╭──────────── common.actions.save ────────────╮
-│ en-US │ Save                                │
-│ fr    │ Enregistrer                         │
-│ de    │                             missing │
-╰─ :w save · <CR> save & close · q cancel ────╯
+╭──────── i18n  common.actions.save ⠋ translating 1 locale ─────────╮
+│ ★ en-US │ Save   source                                           │
+│   de    │    ⠋ translating…                                       │
+│   es    │    ○ missing                                            │
+│   fr    │ Enregistrer les modifications   ● modified              │
+│───────────────────────────────────────────────────────────────────│
+│ :w     save               <C-t>  translate empty                  │
+│ <CR>   save & close       <A-t>  re-translate all                 │
+│ <Tab>  next locale        dd     clear value                      │
+│ q      close              ?      hide help                        │
+╰──── 1 missing · 1 modified · Claude Code, claude-haiku-4-5 ───────╯
 ```
+
+The default locale is marked `★ … source`. Each line shows its state: `○ missing`, `● modified` (changed, not saved yet), `○ emptied, kept on save`, or `⠋ translating…`. The footer sums it up, with the translation provider, and the legend lists the keys. `?` hides the legend for a compact float, and shows it again. The legend leaves out the translation keys when no provider is set.
 
 Each line holds only the value: the locale label isn't text you can edit. The float keeps exactly one line per locale. Anything that would add or remove a line (`dd`, `ggdG`, `J`, a multi-line paste…) is rolled back at once, without losing your other edits, and `u` still undoes your earlier changes. Inside the float:
 
@@ -249,6 +257,7 @@ Each line holds only the value: the locale label isn't text you can edit. The fl
 | `<C-t>` | Save, then translate the empty locales now (normal and insert mode) |
 | `<A-t>` | Save, then re-translate **every** locale from the default one, replacing existing values (asks first) |
 | `<CR>` in normal mode | Save and close |
+| `?` | Hide / show the keymap legend |
 | `q` / `<Esc>` | Close without saving |
 
 `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
@@ -317,6 +326,11 @@ Lua API: `require("i18n-ts").definition()` returns `false` when there is no key 
 | `I18nTsMissing` | links to `DiagnosticWarn` |
 | `I18nTsLocale` | links to `Label` (locale labels in the editor) |
 | `I18nTsPending` | links to `DiagnosticInfo` (translation in progress) |
+| `I18nTsSource` | links to `Special` (default locale in the editor) |
+| `I18nTsModified` | links to `DiagnosticHint` (unsaved line in the editor) |
+| `I18nTsKey` | links to `Special` (keys in the editor legend) |
+| `I18nTsDone` | links to `DiagnosticOk` (every locale translated) |
+| `I18nTsTitleTag` | links to `Search` (the `i18n` tag in the editor title) |
 
 ## Limitations
 
