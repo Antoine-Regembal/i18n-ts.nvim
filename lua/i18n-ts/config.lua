@@ -50,7 +50,7 @@ M.defaults = {
   translate = {
     -- nil (off), "claude_code", "anthropic", "deepl", "command", or fun(request, callback)
     provider = nil,
-    -- Translate the empty locales when the editor is written.
+    -- Translate the empty locales when the editor float is closed (`<C-t>` translates while it is open).
     auto = true,
     -- Extra instruction for the model, e.g. "Medical software used by doctors."
     context = nil,

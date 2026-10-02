@@ -97,6 +97,11 @@ end
 
 --- Machine-translates every missing locale of a key from the default locale.
 function M.translate(arg)
+  local editor = require("i18n-ts.editor")
+  local buf = vim.api.nvim_get_current_buf()
+  if (not arg or arg == "") and editor.session(buf) then
+    return editor.translate_now(buf)
+  end
   local key, project = resolve_key(arg)
   if not project then
     return

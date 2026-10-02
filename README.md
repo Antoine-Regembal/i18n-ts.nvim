@@ -144,7 +144,7 @@ require("i18n-ts").setup({
   },
   translate = {
     provider = nil, -- nil (off), "claude_code", "anthropic", "deepl", "command", or function(request, callback)
-    auto = true, -- translate the empty locales when the editor is written
+    auto = true, -- translate the empty locales when the editor float is closed
     context = nil, -- extra hint for the model, e.g. "Medical software used by doctors."
     claude_code = { cmd = "claude", model = "claude-haiku-4-5", max_budget_usd = 0.05, extra_args = {} },
     anthropic = {
@@ -216,7 +216,7 @@ opts = {
 | `:I18n next` | Display the next locale |
 | `:I18n keys` | Picker: `<CR>` jumps, `<C-e>` edits, `<C-x>` removes, `<C-y>` yanks the key, `<A-i>` inserts it |
 | `:I18n edit [key]` | Edit the key in every locale (see below); also works on a key line inside a translation file |
-| `:I18n translate [key]` | Machine-translate the key's missing locales from the default locale |
+| `:I18n translate [key]` | Machine-translate the key's missing locales from the default locale (inside the editor float: save, then translate now) |
 | `:I18n add [key]` | Add the key (argument, or the one under the cursor) to every locale |
 | `:I18n remove [key]` | Delete the key (or a whole object) from every locale, after confirmation; warns when the code still uses it |
 | `:I18n usages [key]` | Usages of the key, translation files excluded |
@@ -243,13 +243,16 @@ Each line holds only the value: the locale label isn't text you can edit. The fl
 | `<Tab>` / `<S-Tab>` | Next / previous locale (normal and insert mode) |
 | `<CR>` in insert mode | Next locale |
 | `o`, `O`, `J` | Disabled |
-| `:w` | Save |
+| `:w` | Save (no translation) |
+| `<C-t>` | Save, then translate the empty locales now (normal and insert mode) |
 | `<CR>` in normal mode | Save and close |
 | `q` / `<Esc>` | Close without saving |
 
 `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
 
-With a translation provider set, writing the float also fills every locale still empty, translated from the default locale. Type the default locale's value, then `<CR>` to save and close. The translation keeps running in the background and is written to the files when it arrives:
+With a translation provider set, **closing the float** (`<CR>`, `q`, `<Esc>`, `:q`…) fills every locale still empty in the files, translated from the saved default locale value. `:w` alone never translates, so you can save the default locale several times while you refine it. To translate without closing, press `<C-t>` (or run `:I18n translate` from the float). Locales that already have a value are never re-translated, even if you change the default locale's text.
+
+Type the default locale's value, then `<CR>` to save and close. The translation runs in the background and is written to the files when it arrives:
 
 - the key's inline preview shows a live `⠋ translating 12 locales…` indicator in every open buffer, until the result is written;
 - if the float is still open, each line being translated shows the same loader, so does the title (`key · ⠋ translating 12 locales`), and the values appear on the empty lines as soon as they arrive;

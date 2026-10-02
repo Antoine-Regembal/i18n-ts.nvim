@@ -596,17 +596,17 @@ test("dd clears the value instead of deleting the line", function()
   vim.fn.delete(p.root, "rf")
 end)
 
-test("editor machine-translates the empty locales from the default one", function()
+test("the empty locales are translated when the float is closed, not on :w", function()
   local requests = {}
   local p = tmp_project({
     en = { "{", "}" },
-    fr = { "{", "}" },
+    fr = { "{", '  "greet": "Salut"', "}" },
     de = { "{", "}" },
   }, {
     translate = {
       provider = function(req, cb)
         table.insert(requests, req)
-        cb(nil, { fr = "Bonjour", de = "Hallo" })
+        cb(nil, { de = "Hallo" })
       end,
     },
   })
@@ -615,13 +615,64 @@ test("editor machine-translates the empty locales from the default one", functio
   vim.api.nvim_buf_call(buf, function()
     vim.cmd("write")
   end)
+  vim.wait(50)
+  eq(#requests, 0)
+  editor.close(buf)
   assert(vim.wait(2000, function()
     return p.store:get("greet", "de") ~= nil
   end))
-  eq(requests[1], { key = "greet", source_locale = "en", source = "Hello", targets = { "de", "fr" } })
-  eq(p.store:get("greet", "fr"), "Bonjour")
-  eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "Hello", "Hallo", "Bonjour" })
+  eq(requests[1], { key = "greet", source_locale = "en", source = "Hello", targets = { "de" } })
+  eq(p.store:get("greet", "de"), "Hallo")
+  eq(p.store:get("greet", "fr"), "Salut")
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("closing with :q also translates, closing a fully translated key does not", function()
+  local requests = {}
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", "}" } }, {
+    translate = {
+      provider = function(req, cb)
+        table.insert(requests, req)
+        cb(nil, { fr = "Kf" })
+      end,
+    },
+  })
+  editor.open(p, "k")
+  vim.cmd("quit")
+  assert(vim.wait(2000, function()
+    return p.store:get("k", "fr") ~= nil
+  end))
+  eq(#requests, 1)
+  local buf = editor.open(p, "k")
   editor.close(buf)
+  vim.wait(50)
+  eq(#requests, 1)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test(":I18n translate inside the float translates now", function()
+  local requests = {}
+  local p = tmp_project({ en = { "{", "}" }, fr = { "{", "}" } }, {
+    translate = {
+      provider = function(req, cb)
+        table.insert(requests, req)
+        cb(nil, { fr = "Bonjour" })
+      end,
+    },
+  })
+  local buf = editor.open(p, "greet")
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Hello" })
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  require("i18n-ts.navigation").translate()
+  assert(vim.wait(2000, function()
+    return vim.api.nvim_buf_get_lines(buf, 1, 2, false)[1] == "Bonjour"
+  end))
+  eq(#requests, 1)
+  editor.close(buf)
+  vim.wait(50)
+  eq(#requests, 1)
   vim.fn.delete(p.root, "rf")
 end)
 
@@ -702,9 +753,8 @@ test("the editor float shows a loader on the lines being translated", function()
   local buf = editor.open(p, "greet")
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Hello" })
-  vim.api.nvim_buf_call(buf, function()
-    vim.cmd("write")
-  end)
+  vim.api.nvim_feedkeys(vim.keycode("<C-t>"), "x", false)
+  eq(p.store:get("greet", "en"), "Hello")
   local function line_marks(row)
     local text = {}
     for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { row, 0 }, { row, -1 }, { details = true })) do
@@ -758,10 +808,10 @@ test("editor does not translate when the default locale is empty", function()
   vim.api.nvim_buf_call(buf, function()
     vim.cmd("write")
   end)
+  editor.close(buf)
   vim.wait(100)
   eq(called, false)
   eq(p.store:get("k", "fr"), "Seulement fr")
-  editor.close(buf)
   vim.fn.delete(p.root, "rf")
 end)
 

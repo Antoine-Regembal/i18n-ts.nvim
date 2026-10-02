@@ -79,15 +79,20 @@ so the float always has one line per locale.
     o O J               Disabled.
     :w                  Save the changed lines, add the filled-in locales.
     <CR> (normal)       Save and close.
-    q <Esc>             Close without saving.
+    <C-t>               Save, then translate the empty locales now.
+    q <Esc>             Close without saving (empty locales are still
+                        translated from the saved default value).
 
 Emptied lines are left unchanged. Newlines in values are shown as `\n`.
 
                                                            *i18n-ts-translate*
 With `translate.provider` set ("claude_code", "anthropic", "deepl", "command"
-or a Lua function), writing the editor also fills the locales still empty,
-translated from the default locale. The source text is sent to the provider.
-Translations run in the background: closing the editor doesn't stop them, the
+or a Lua function), closing the editor fills the saved locales still empty,
+translated from the saved default locale value. `:w` only saves. To translate
+while the editor is open, press <C-t> or run `:I18n translate`. Values that
+already exist are never re-translated. The source text is sent to the
+provider. Translations run in the background: closing the editor doesn't stop
+them, the
 inline preview of the key shows a "translating…" indicator until the result
 is written, and locales filled in meanwhile are never overwritten.
 "claude_code" runs `claude -p` and reuses the Claude Code login, with no API

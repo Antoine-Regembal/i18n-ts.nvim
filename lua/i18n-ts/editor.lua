@@ -183,26 +183,49 @@ function M.translate_key(project, key, targets, on_done)
   end)
 end
 
---- Machine-translates the locales still empty after a write, from the default locale.
-local function translate_missing(buf)
-  local s = sessions[buf]
-  local tcfg = s.project.cfg.translate
-  local store = s.project.store
-  if not tcfg.provider or not tcfg.auto or (s.project.pending or {})[s.key] then
+--- Machine-translates the saved locales still empty, from the saved default locale value.
+---@param opts { quiet: boolean } quiet: no notice when there is nothing to do (closing the float)
+local function translate_missing(project, key, buf, opts)
+  local tcfg = project.cfg.translate
+  local store = project.store
+  if not tcfg.provider or (project.pending or {})[key] then
     return
   end
-  local targets = missing_locales(store, s.key)
+  local targets = missing_locales(store, key)
   if #targets == 0 then
-    return
+    return opts.quiet or notify(("'%s' is translated in every locale"):format(key))
   end
-  if not store:get(s.key, store.default_locale) then
-    return notify(("fill in %s first to translate the other locales"):format(store.default_locale))
+  if not store:get(key, store.default_locale) then
+    return opts.quiet or notify(("fill in %s first to translate the other locales"):format(store.default_locale))
   end
-  M.translate_key(s.project, s.key, targets)
-  if vim.api.nvim_buf_is_valid(buf) then
+  M.translate_key(project, key, targets)
+  if buf and vim.api.nvim_buf_is_valid(buf) and sessions[buf] then
     decorate(buf)
     set_title(buf)
   end
+end
+
+--- Saves the float, then translates its empty locales right away.
+function M.translate_now(buf)
+  local s = sessions[buf]
+  if not s then
+    return
+  end
+  if not s.project.cfg.translate.provider then
+    return notify("set translate.provider to enable machine translation", vim.log.levels.WARN)
+  end
+  if vim.bo[buf].modified then
+    vim.api.nvim_buf_call(buf, function()
+      vim.cmd("write")
+    end)
+  end
+  translate_missing(s.project, s.key, buf, { quiet = false })
+end
+
+--- Project and key edited in `buf`, when it is an editor float.
+function M.session(buf)
+  local s = sessions[buf == 0 and vim.api.nvim_get_current_buf() or buf]
+  return s and s.project, s and s.key
 end
 
 local function write(buf)
@@ -218,7 +241,6 @@ local function write(buf)
   local written, errors = edit.set(s.project.store, s.key, values)
   finish(s, written, errors, "saved")
   refill(buf)
-  translate_missing(buf)
 end
 
 function M.close(buf)
@@ -331,7 +353,7 @@ function M.open(project, key)
     title_pos = "center",
   }
   if vim.fn.has("nvim-0.10") == 1 then
-    win_opts.footer = " :w save · <CR> save & close · <Tab> next · q cancel "
+    win_opts.footer = " :w save · <C-t> translate empty · <CR> save & close · q close "
     win_opts.footer_pos = "center"
   end
   local win = vim.api.nvim_open_win(buf, true, win_opts)
@@ -348,7 +370,11 @@ function M.open(project, key)
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = buf,
     callback = function()
+      local s = sessions[buf]
       sessions[buf] = nil
+      if s and s.project.cfg.translate.auto then
+        translate_missing(s.project, s.key, nil, { quiet = true })
+      end
     end,
   })
   guard(buf)
@@ -382,6 +408,9 @@ function M.open(project, key)
   vim.keymap.set("i", "<Del>", function()
     return vim.api.nvim_win_get_cursor(0)[2] >= #vim.api.nvim_get_current_line() and "" or vim.keycode("<Del>")
   end, { buffer = buf, expr = true, replace_keycodes = false })
+  map("<C-t>", function()
+    M.translate_now(buf)
+  end, { "n", "i" })
   map("q", function()
     M.close(buf)
   end)
