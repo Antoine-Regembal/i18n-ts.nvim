@@ -796,6 +796,18 @@ test("the editor float shows a loader on the lines being translated", function()
   vim.fn.delete(p.root, "rf")
 end)
 
+local function with_select(answer, fn)
+  local prompts = {}
+  local original = vim.ui.select
+  vim.ui.select = function(items, opts, on_choice)
+    table.insert(prompts, opts.prompt)
+    on_choice(answer == "confirm" and items[1] or items[#items])
+  end
+  local ok, err = pcall(fn, prompts)
+  vim.ui.select = original
+  assert(ok, err)
+end
+
 local function float_ui(buf)
   local win = vim.fn.bufwinid(buf)
   local virt_lines, badges = {}, {}
@@ -834,7 +846,7 @@ test("the float shows a keymap legend, toggled with ?", function()
   )
   local buf = editor.open(p, "k")
   local ui = float_ui(buf)
-  for _, text in ipairs({ ":w", "save", "<C-t>", "translate empty", "<A-t>", "re-translate all", "dd", "clear value" }) do
+  for _, text in ipairs({ ":w", "save", "<C-t>", "translate empty", "gT", "re-translate all", "dd", "clear value" }) do
     assert(ui.legend:find(text, 1, true), "legend misses '" .. text .. "':\n" .. ui.legend)
   end
   local full = ui.height
@@ -845,6 +857,45 @@ test("the float shows a keymap legend, toggled with ?", function()
   assert(ui.footer:find("? help", 1, true), ui.footer)
   vim.api.nvim_feedkeys("?", "x", false)
   eq(float_ui(buf).height, full)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("gT re-translates by default, <A-t> is no longer mapped", function()
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", '  "k": "Kf"', "}" } }, {
+    translate = {
+      provider = function(_, cb)
+        cb(nil, { fr = "New" })
+      end,
+    },
+  })
+  local buf = editor.open(p, "k")
+  assert(float_ui(buf).legend:find("gT", 1, true), float_ui(buf).legend)
+  eq(float_ui(buf).legend:find("<A-t>", 1, true), nil)
+  eq(vim.fn.maparg("<A-t>", "n", false, true).buffer, nil)
+  with_select("confirm", function()
+    vim.api.nvim_feedkeys("gT", "x", false)
+  end)
+  assert(vim.wait(2000, function()
+    return p.store:get("k", "fr") == "New"
+  end))
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("editor.keys remaps or disables the float keys, and the legend follows", function()
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", "}" } }, {
+    translate = { provider = "claude_code" },
+    editor = { keys = { retranslate = "<leader>r", translate = false, clear = { "dd", "<C-k>" } } },
+  })
+  local buf = editor.open(p, "k")
+  local legend = float_ui(buf).legend
+  assert(legend:find("<leader>r", 1, true), legend)
+  eq(legend:find("<C-t>", 1, true), nil)
+  eq(legend:find("translate empty", 1, true), nil)
+  eq(vim.fn.maparg("<C-t>", "n", false, true).buffer, nil)
+  eq(vim.fn.maparg("gT", "n", false, true).buffer, nil)
+  eq(vim.fn.maparg("<C-k>", "n", false, true).buffer, 1)
   editor.close(buf)
   vim.fn.delete(p.root, "rf")
 end)
@@ -887,18 +938,6 @@ test("badges and footer follow the edits live", function()
   editor.close(buf)
   vim.fn.delete(p.root, "rf")
 end)
-
-local function with_select(answer, fn)
-  local prompts = {}
-  local original = vim.ui.select
-  vim.ui.select = function(items, opts, on_choice)
-    table.insert(prompts, opts.prompt)
-    on_choice(answer == "confirm" and items[1] or items[#items])
-  end
-  local ok, err = pcall(fn, prompts)
-  vim.ui.select = original
-  assert(ok, err)
-end
 
 test(":I18n retranslate replaces every other locale after confirmation", function()
   local requests = {}
@@ -960,7 +999,7 @@ test("retranslate keeps a value changed while the request was running", function
   vim.fn.delete(p.root, "rf")
 end)
 
-test("<A-t> in the float saves, retranslates and updates the lines", function()
+test("gT in the float saves, retranslates and updates the lines", function()
   local p = tmp_project({
     en = { "{", '  "k": "Old"', "}" },
     fr = { "{", '  "k": "Vieux"', "}" },
@@ -975,7 +1014,7 @@ test("<A-t> in the float saves, retranslates and updates the lines", function()
   local buf = editor.open(p, "k")
   vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Fresh" })
   with_select("confirm", function()
-    vim.api.nvim_feedkeys(vim.keycode("<A-t>"), "x", false)
+    vim.api.nvim_feedkeys("gT", "x", false)
   end)
   assert(vim.wait(2000, function()
     return vim.api.nvim_buf_get_lines(buf, 1, 2, false)[1] == "Frais"

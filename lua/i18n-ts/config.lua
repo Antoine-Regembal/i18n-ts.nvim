@@ -42,6 +42,20 @@ M.defaults = {
     -- Formatter run on the written files, e.g. { "npx", "prettier", "--write" }. Never read from project files.
     format_cmd = nil,
   },
+  editor = {
+    -- Keys of the `:I18n edit` float: a string, a list of strings, or false to disable.
+    -- Special keys (`<C-t>`, `<Tab>`…) also work in insert mode; others (`gT`, `dd`) in normal mode only.
+    keys = {
+      save_close = "<CR>",
+      close = { "q", "<Esc>" },
+      next = "<Tab>",
+      prev = "<S-Tab>",
+      clear = "dd",
+      help = "?",
+      translate = "<C-t>",
+      retranslate = "gT",
+    },
+  },
   remove = {
     -- Also delete parent objects left empty by `:I18n remove`.
     prune_empty = true,

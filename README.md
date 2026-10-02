@@ -142,6 +142,19 @@ require("i18n-ts").setup({
     prompt = "all", -- "all": ask a value per locale; "default": reuse the default locale's value
     format_cmd = nil, -- e.g. { "npx", "prettier", "--write" }, run on the written files
   },
+  editor = {
+    -- Keys of the :I18n edit float: a string, a list, or false to disable
+    keys = {
+      save_close = "<CR>",
+      close = { "q", "<Esc>" },
+      next = "<Tab>",
+      prev = "<S-Tab>",
+      clear = "dd",
+      help = "?",
+      translate = "<C-t>",
+      retranslate = "gT",
+    },
+  },
   remove = {
     prune_empty = true, -- also delete parent objects left empty
   },
@@ -259,7 +272,7 @@ opts = {
 │   fr    │ Enregistrer les modifications   ● modified              │
 │───────────────────────────────────────────────────────────────────│
 │ :w     save               <C-t>  translate empty                  │
-│ <CR>   save & close       <A-t>  re-translate all                 │
+│ <CR>   save & close       gT     re-translate all                 │
 │ <Tab>  next locale        dd     clear value                      │
 │ q      close              ?      hide help                        │
 ╰──── 1 missing · 1 modified · Claude Code, claude-haiku-4-5 ───────╯
@@ -277,14 +290,30 @@ Each line holds only the value: the locale label isn't text you can edit. The fl
 | `o`, `O`, `J` | Disabled |
 | `:w` | Save (no translation) |
 | `<C-t>` | Save, then translate the empty locales now (normal and insert mode) |
-| `<A-t>` | Save, then re-translate **every** locale from the default one, replacing existing values (asks first) |
+| `gT` | Save, then re-translate **every** locale from the default one, replacing existing values (asks first) |
 | `<CR>` in normal mode | Save and close |
 | `?` | Hide / show the keymap legend |
 | `q` / `<Esc>` | Close without saving |
 
+Every key above, except `:w`, can be changed with `editor.keys`, and the legend shows your keys. A string, a list of keys, or `false` to disable:
+
+```lua
+opts = {
+  editor = {
+    keys = {
+      retranslate = "<leader>r", -- instead of gT
+      translate = { "<C-t>", "<leader>t" },
+      clear = false, -- keep the default dd behaviour
+    },
+  },
+},
+```
+
+Special keys (`<C-t>`, `<Tab>`…) for moving and translating also work in insert mode; other keys (`gT`, `<leader>r`) work in normal mode. Avoid `<A-…>` keys: many terminals and window managers use them (Ghostty opens a new window on `Alt+t`).
+
 `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
 
-With a translation provider set, **closing the float** (`<CR>`, `q`, `<Esc>`, `:q`…) fills every locale still empty in the files, translated from the saved default locale value. `:w` alone never translates, so you can save the default locale several times while you refine it. To translate without closing, press `<C-t>` (or run `:I18n translate` from the float). Locales that already have a value are kept, even if you change the default locale's text. When you did change it and want every locale to follow, use `<A-t>` in the float or `:I18n retranslate`: after a confirmation, every other locale is re-translated from the default one. A locale you edit while the request runs is still left as you typed it.
+With a translation provider set, **closing the float** (`<CR>`, `q`, `<Esc>`, `:q`…) fills every locale still empty in the files, translated from the saved default locale value. `:w` alone never translates, so you can save the default locale several times while you refine it. To translate without closing, press `<C-t>` (or run `:I18n translate` from the float). Locales that already have a value are kept, even if you change the default locale's text. When you did change it and want every locale to follow, use `gT` in the float or `:I18n retranslate`: after a confirmation, every other locale is re-translated from the default one. A locale you edit while the request runs is still left as you typed it.
 
 Type the default locale's value, then `<CR>` to save and close. The translation runs in the background and is written to the files when it arrives:
 

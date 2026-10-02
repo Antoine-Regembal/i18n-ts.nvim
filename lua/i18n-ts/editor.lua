@@ -25,30 +25,60 @@ local function pad(text, width)
 end
 
 --- Keymap legend, two entries per row; translation entries only with a provider.
-local function legend_items(s)
-  local items = {
-    { ":w", "save" },
-    { "<CR>", "save & close" },
-    { "<Tab>", "next locale" },
-    { "dd", "clear value" },
-  }
-  if s.project.cfg.translate.provider then
-    table.insert(items, 2, { "<C-t>", "translate empty" })
-    table.insert(items, 4, { "<A-t>", "re-translate all" })
+--- Configured keys of an action as a list; empty when disabled.
+local function keys_of(project, action)
+  local keys = ((project.cfg.editor or require("i18n-ts.config").defaults.editor).keys or {})[action]
+  if not keys then
+    return {}
   end
-  vim.list_extend(items, { { "q", "close" }, { "?", "hide help" } })
+  return type(keys) == "table" and keys or { keys }
+end
+
+local function legend_items(s)
+  local translating = s.project.cfg.translate.provider ~= nil
+  local entries = {
+    { "save", "save", ":w" },
+    { "translate", "translate empty", nil, translating },
+    { "save_close", "save & close" },
+    { "retranslate", "re-translate all", nil, translating },
+    { "next", "next locale" },
+    { "clear", "clear value" },
+    { "close", "close" },
+    { "help", "hide help" },
+  }
+  local items = {}
+  for _, e in ipairs(entries) do
+    local key = e[3] or keys_of(s.project, e[1])[1]
+    if key and e[4] ~= false then
+      table.insert(items, { key, e[2] })
+    end
+  end
   return items
 end
 
-local KEY_WIDTH, DESC_WIDTH = 7, 19
+local DESC_WIDTH = 19
+
+local function key_width(items)
+  local width = 5
+  for _, item in ipairs(items) do
+    width = math.max(width, vim.fn.strdisplaywidth(item[1]))
+  end
+  return width + 2
+end
+
+--- Width of the two-column legend, for the float size.
+local function legend_width(s)
+  return 1 + 2 * (key_width(legend_items(s)) + DESC_WIDTH)
+end
 
 local function legend_lines(s, width)
   local items = legend_items(s)
+  local kw = key_width(items)
   local lines = { { { string.rep("─", width), "FloatBorder" } } }
   for i = 1, #items, 2 do
     local row = { { " " } }
     for j = i, math.min(i + 1, #items) do
-      table.insert(row, { pad(items[j][1], KEY_WIDTH), "I18nTsKey" })
+      table.insert(row, { pad(items[j][1], kw), "I18nTsKey" })
       table.insert(row, { pad(items[j][2], DESC_WIDTH), "Comment" })
     end
     table.insert(lines, row)
@@ -552,8 +582,7 @@ function M.open(project, key)
     label = math.max(label, #l)
     longest = math.max(longest, vim.fn.strdisplaywidth(to_line(store:get(key, l))))
   end
-  local legend_width = 1 + 2 * (KEY_WIDTH + DESC_WIDTH)
-  local width = math.min(math.max(label + 6 + longest + 26, legend_width, 56), vim.o.columns - 4)
+  local width = math.min(math.max(label + 6 + longest + 26, legend_width(sessions[buf]), 56), vim.o.columns - 4)
   sessions[buf].width = width
   local height = window_height(sessions[buf])
   local win = vim.api.nvim_open_win(buf, true, {
@@ -596,15 +625,6 @@ function M.open(project, key)
   for _, lhs in ipairs({ "o", "O", "J", "gJ" }) do
     map(lhs, noop)
   end
-  map("dd", function()
-    clear_line(buf)
-  end)
-  map("<Tab>", function()
-    move(buf, 1)
-  end, { "n", "i" })
-  map("<S-Tab>", function()
-    move(buf, -1)
-  end, { "n", "i" })
   map("<CR>", function()
     move(buf, 1)
   end, "i")
@@ -619,25 +639,59 @@ function M.open(project, key)
   vim.keymap.set("i", "<Del>", function()
     return vim.api.nvim_win_get_cursor(0)[2] >= #vim.api.nvim_get_current_line() and "" or vim.keycode("<Del>")
   end, { buffer = buf, expr = true, replace_keycodes = false })
-  map("<C-t>", function()
-    M.translate_now(buf)
-  end, { "n", "i" })
-  map("<A-t>", function()
-    M.retranslate_now(buf)
-  end, { "n", "i" })
-  map("?", function()
-    toggle_help(buf)
-  end)
-  map("q", function()
-    M.close(buf)
-  end)
-  map("<Esc>", function()
-    M.close(buf)
-  end)
-  map("<CR>", function()
-    vim.cmd("write")
-    M.close(buf)
-  end)
+  -- Configurable actions; `insert`: also mapped in insert mode when the key is a special key like <C-t>.
+  local actions = {
+    clear = {
+      fn = function()
+        clear_line(buf)
+      end,
+    },
+    next = {
+      insert = true,
+      fn = function()
+        move(buf, 1)
+      end,
+    },
+    prev = {
+      insert = true,
+      fn = function()
+        move(buf, -1)
+      end,
+    },
+    translate = {
+      insert = true,
+      fn = function()
+        M.translate_now(buf)
+      end,
+    },
+    retranslate = {
+      insert = true,
+      fn = function()
+        M.retranslate_now(buf)
+      end,
+    },
+    help = {
+      fn = function()
+        toggle_help(buf)
+      end,
+    },
+    close = {
+      fn = function()
+        M.close(buf)
+      end,
+    },
+    save_close = {
+      fn = function()
+        vim.cmd("write")
+        M.close(buf)
+      end,
+    },
+  }
+  for action, spec in pairs(actions) do
+    for _, lhs in ipairs(keys_of(project, action)) do
+      map(lhs, spec.fn, (spec.insert and lhs:sub(1, 1) == "<") and { "n", "i" } or "n")
+    end
+  end
   return buf
 end
 

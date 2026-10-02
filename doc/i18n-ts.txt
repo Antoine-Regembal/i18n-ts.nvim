@@ -83,12 +83,18 @@ so the float always has one line per locale.
     <CR> (normal)       Save and close.
     ?                   Hide / show the keymap legend.
     <C-t>               Save, then translate the empty locales now.
-    <A-t>               Save, then re-translate every locale, replacing
+    gT                  Save, then re-translate every locale, replacing
                         existing values (asks first).
     q <Esc>             Close without saving (empty locales are still
                         translated from the saved default value).
 
 Emptied lines are left unchanged. Newlines in values are shown as `\n`.
+
+                                                         *i18n-ts-editor-keys*
+Every key but `:w` is set by `editor.keys` (save_close, close, next, prev,
+clear, help, translate, retranslate): a string, a list, or false to disable.
+The legend shows the configured keys. Special keys like <C-t> for next, prev,
+translate and retranslate also work in insert mode.
 
                                                            *i18n-ts-translate*
 With `translate.provider` set ("claude_code", "anthropic", "deepl", "command"
