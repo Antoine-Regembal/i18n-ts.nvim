@@ -10,6 +10,8 @@ See your translations where you use them. A fast, dependency-free Neovim plugin 
 - Float with the key in every locale, and a command to switch the displayed locale
 - Completion of keys inside `t('…')` with [blink.cmp](https://github.com/Saghen/blink.cmp), all locales in the documentation
 - Picker over every key and translation ([snacks.nvim](https://github.com/folke/snacks.nvim), `vim.ui.select` without it)
+- Edit a key in every locale from one float: one line per locale, the default locale first, `:w` to save
+- Machine-translate the empty locales from the default one (Claude, DeepL, your own command or Lua function)
 - Add a key to every locale file at once, keeping key order and indentation
 - Find the usages of a key with ripgrep
 - Zero config for the usual layouts: the project root and the translation files are detected
@@ -20,6 +22,7 @@ Large projects stay fast: loading 13 locales of ~2,900 keys takes under 100 ms, 
 
 - Neovim >= 0.10
 - Optional: [ripgrep](https://github.com/BurntSushi/ripgrep) for `:I18n usages`
+- Optional: `curl` (7.84+ for `retry-after` handling) for the Claude and DeepL translation providers
 - Optional: snacks.nvim (pickers), blink.cmp (completion)
 
 ## Installation
@@ -39,6 +42,8 @@ return {
       { "<leader>Ik", "<cmd>I18n keys<cr>", desc = "i18n: keys" },
       { "<leader>Is", "<cmd>I18n show<cr>", desc = "i18n: all locales" },
       { "<leader>In", "<cmd>I18n next<cr>", desc = "i18n: next locale" },
+      { "<leader>Ie", "<cmd>I18n edit<cr>", desc = "i18n: edit key" },
+      { "<leader>IT", "<cmd>I18n translate<cr>", desc = "i18n: translate missing locales" },
       { "<leader>Ia", "<cmd>I18n add<cr>", desc = "i18n: add key" },
       { "<leader>Iu", "<cmd>I18n usages<cr>", desc = "i18n: usages" },
       { "<leader>It", "<cmd>I18n toggle<cr>", desc = "i18n: toggle" },
@@ -88,7 +93,8 @@ Run `:checkhealth i18n-ts` from a source file to see the detected root, translat
 2. **Translation files.** Use `sources` when set. Otherwise the plugin looks for directories named `locales`, `locale`, `i18n`, `lang`, `langs`, `messages` or `translations`, up to 4 levels deep, skipping `node_modules`, `dist`, `build` and hidden directories:
    - `<dir>/en.json`, `<dir>/fr.json`, … gives `<dir>/{locale}.json`;
    - `<dir>/en/common.json`, … gives `<dir>/{locale}/{namespace}.json`.
-3. **Locales.** Use `locales` when set. Otherwise every locale found, sorted, with `default_locale` first.
+3. **Locales.** Use `locales` when set. Otherwise every locale found, sorted. The default locale is always listed first.
+4. **Default locale.** `default_locale` (default `"en-US"`) is matched leniently: case and `_`/`-` are ignored (`en_US.json` matches), then the base language (`en`), then any locale of that language (`en-GB`), then the first locale. A project with only `en.json` still gets `en`.
 
 ## Configuration
 
@@ -99,9 +105,10 @@ require("i18n-ts").setup({
   root_markers = { ".i18n-ts.json", ".git", "package.json" },
   -- Relative to the root. `{locale}` is required, `{namespace}` optional. Empty: auto-detected.
   sources = {},
-  -- Empty: every locale found, `default_locale` first.
+  -- Empty: every locale found. The default locale always comes first.
   locales = {},
-  default_locale = "en",
+  -- Source of machine translations; matched leniently (see above).
+  default_locale = "en-US",
   -- Keys of `{namespace}` files become `<namespace><separator><key>`.
   namespace_separator = ".",
   -- Namespace tried for keys written without one (i18next `defaultNS`).
@@ -130,6 +137,20 @@ require("i18n-ts").setup({
     prompt = "all", -- "all": ask a value per locale; "default": reuse the default locale's value
     format_cmd = nil, -- e.g. { "npx", "prettier", "--write" }, run on the written files
   },
+  translate = {
+    provider = nil, -- nil (off), "anthropic", "deepl", "command", or function(request, callback)
+    auto = true, -- translate the empty locales when the editor is written
+    context = nil, -- extra hint for the model, e.g. "Medical software used by doctors."
+    anthropic = {
+      model = "claude-haiku-4-5",
+      api_key_env = "ANTHROPIC_API_KEY",
+      base_url = "https://api.anthropic.com",
+      max_tokens = 2048,
+    },
+    deepl = { api_key_env = "DEEPL_API_KEY" },
+    command = nil, -- argv, see "Machine translation"
+    retry_delay_ms = 2000,
+  },
   -- Overrides per project root, from your own config.
   projects = {},
   debounce_ms = 80,
@@ -149,7 +170,7 @@ Commit a `.i18n-ts.json` at the project root so everyone on the team gets the sa
 }
 ```
 
-It may set `sources`, `locales`, `default_locale`, `namespace_separator`, `default_namespace`, `functions` and `patterns`. The file is read as plain JSON, never executed. Settings that run commands (`add.format_cmd`) are ignored there: set them in your own config, globally or under `projects`.
+It may set `sources`, `locales`, `default_locale`, `namespace_separator`, `default_namespace`, `functions` and `patterns`. The file is read as plain JSON, never executed. Settings that run commands or send data out (`add.format_cmd`, `translate`) are ignored there: set them in your own config, globally or under `projects`.
 
 To keep a configuration to yourself:
 
@@ -187,11 +208,66 @@ opts = {
 | `:I18n def` | Jump to the key under the cursor in the displayed locale |
 | `:I18n show` | Float with the key in every locale |
 | `:I18n next` | Display the next locale |
-| `:I18n keys` | Picker: `<CR>` jumps, `<C-y>` yanks the key, `<A-i>` inserts it |
+| `:I18n keys` | Picker: `<CR>` jumps, `<C-e>` edits, `<C-y>` yanks the key, `<A-i>` inserts it |
+| `:I18n edit [key]` | Edit the key in every locale (see below); also works on a key line inside a translation file |
+| `:I18n translate [key]` | Machine-translate the key's missing locales from the default locale |
 | `:I18n add [key]` | Add the key (argument, or the one under the cursor) to every locale |
 | `:I18n usages [key]` | Usages of the key, translation files excluded |
 | `:I18n toggle` | Hide / show translations and diagnostics |
 | `:I18n reload` | Forget every project and re-read the configuration and files |
+
+### Editing translations
+
+`:I18n edit` opens a float with one line per locale, the default locale first:
+
+```
+╭──────────── common.actions.save ────────────╮
+│ en-US │ Save                                │
+│ fr    │ Enregistrer                         │
+│ de    │                             missing │
+╰─ :w save · <CR> save & close · q cancel ────╯
+```
+
+Each line holds only the value, so every Vim motion works. `:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`. Adding or removing lines is refused.
+
+With a translation provider set, writing the float also fills every locale still empty, translated from the default locale. Type the default locale's value, `:w`, and the other locales are written too.
+
+### Machine translation
+
+The source text and the key are sent to the provider you choose. Nothing is sent while `translate.provider` is `nil`. API keys are read from environment variables only.
+
+**Claude** (one request per key for every locale, using structured JSON output):
+
+```lua
+translate = { provider = "anthropic" } -- reads ANTHROPIC_API_KEY, uses claude-haiku-4-5
+```
+
+A key translated into 12 locales is about 500 input and 300 output tokens with Claude Haiku 4.5, around $0.002. Placeholders (`{name}`, `%s`), linked messages (`@:key`), plural separators (`|`) and HTML tags are kept.
+
+**DeepL** (one request per locale; locales DeepL doesn't support are reported and skipped):
+
+```lua
+translate = { provider = "deepl" } -- reads DEEPL_API_KEY; keys ending in ":fx" use the free API
+```
+
+**Your own command**, which gets the request as JSON on stdin and prints `{ "<locale>": "<text>" }`:
+
+```lua
+translate = { provider = "command", command = { "my-translator", "--json" } }
+-- stdin: { "key": "common.save", "source_locale": "en-US", "source": "Save", "targets": ["fr", "de"] }
+```
+
+**A Lua function**, for anything else:
+
+```lua
+translate = {
+  provider = function(request, callback)
+    callback(nil, { fr = "…", de = "…" }) -- or callback("error message")
+  end,
+}
+```
+
+The Claude and DeepL providers need `curl`. The API key goes to curl on stdin, so it never shows in the process list.
 
 Lua API: `require("i18n-ts").definition()` returns `false` when there is no key under the cursor, so it can sit in front of `vim.lsp.buf.definition()` (see the `gd` mapping above).
 

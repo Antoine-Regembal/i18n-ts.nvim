@@ -8,7 +8,8 @@ M.defaults = {
   sources = {},
   -- Empty: every locale found in the sources, sorted, `default_locale` first.
   locales = {},
-  default_locale = "en",
+  -- Always listed first, and the source of machine translations. Matched leniently: `en_us`, then `en`, then `en-*`.
+  default_locale = "en-US",
   -- Prefix keys from `{namespace}` files with `<namespace><separator>`.
   namespace_separator = ".",
   -- Namespace tried when a key has none (i18next `defaultNS`).
@@ -40,6 +41,25 @@ M.defaults = {
     prompt = "all",
     -- Formatter run on the written files, e.g. { "npx", "prettier", "--write" }. Never read from project files.
     format_cmd = nil,
+  },
+  -- Fills empty locales from the default one. Sends the source text to the provider; never read from project files.
+  translate = {
+    -- nil (off), "anthropic", "deepl", "command", or fun(request, callback)
+    provider = nil,
+    -- Translate the empty locales when the editor is written.
+    auto = true,
+    -- Extra instruction for the model, e.g. "Medical software used by doctors."
+    context = nil,
+    anthropic = {
+      model = "claude-haiku-4-5",
+      api_key_env = "ANTHROPIC_API_KEY",
+      base_url = "https://api.anthropic.com",
+      max_tokens = 2048,
+    },
+    deepl = { api_key_env = "DEEPL_API_KEY" },
+    -- argv; gets {key, source_locale, source, targets} as JSON on stdin, prints {locale = text}.
+    command = nil,
+    retry_delay_ms = 2000,
   },
   -- Per-root overrides from your own config, keyed by path: { ["~/Code/app"] = { sources = { ... } } }.
   projects = {},

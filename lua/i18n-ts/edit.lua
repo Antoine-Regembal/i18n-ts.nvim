@@ -88,6 +88,31 @@ function M.insert(lines, key, value)
   return out
 end
 
+--- Returns `lines` with the string value of `key` replaced, keeping the line's layout.
+---@return string[]|nil lines, string|nil err
+function M.replace(lines, key, value)
+  local positions, objects = store_mod.index_json(lines)
+  local pos = positions[key]
+  if not pos then
+    return nil, "key not found"
+  end
+  if objects[key] then
+    return nil, ("'%s' is not a string"):format(key)
+  end
+  local line = lines[pos[1]]
+  local head, literal, tail = line:match('^(%s*"[^"]*"%s*:%s*)(".*")(%s*,?%s*)$')
+  local ok, old = pcall(vim.json.decode, literal or "")
+  if not head or not ok or type(old) ~= "string" then
+    return nil, ("'%s' is not a one-line string"):format(key)
+  end
+  local out = vim.list_slice(lines, 1, #lines)
+  out[pos[1]] = head .. vim.json.encode(value) .. tail
+  if not pcall(vim.json.decode, table.concat(out, "\n")) then
+    return nil, "result would not be valid JSON"
+  end
+  return out
+end
+
 local function read_lines(path)
   local bufnr = vim.fn.bufnr(path)
   if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
@@ -126,12 +151,11 @@ local function write_lines(path, lines, bufnr)
   return true
 end
 
---- Writes `values[locale]` for every locale given; returns written paths and per-file errors.
-function M.add(store, key, values)
+local function apply(store, key, values, opts)
   local written, errors = {}, {}
   for _, locale in ipairs(store.locales) do
     local value = values[locale]
-    if value ~= nil then
+    if value ~= nil and value ~= "" and value ~= store:get(key, locale) then
       local file, rel = store:target(key, locale)
       if not file then
         errors[locale] = "no file for this key"
@@ -140,7 +164,13 @@ function M.add(store, key, values)
         if not lines then
           errors[locale] = vim.fn.fnamemodify(file.path, ":~:.") .. " " .. bufnr
         else
-          local out, err = M.insert(lines, rel, value)
+          local exists = opts.update and store_mod.index_json(lines)[rel]
+          local out, err
+          if exists then
+            out, err = M.replace(lines, rel, value)
+          else
+            out, err = M.insert(lines, rel, value)
+          end
           if not out then
             errors[locale] = err
           elseif write_lines(file.path, out, bufnr) then
@@ -156,6 +186,16 @@ function M.add(store, key, values)
     store:reload_path(path)
   end
   return written, errors
+end
+
+--- Adds `key` to every locale given in `values`; existing keys are reported as errors.
+function M.add(store, key, values)
+  return apply(store, key, values, { update = false })
+end
+
+--- Sets `key` to `values[locale]`: replaces existing values, adds missing ones, skips empty or unchanged ones.
+function M.set(store, key, values)
+  return apply(store, key, values, { update = true })
 end
 
 return M

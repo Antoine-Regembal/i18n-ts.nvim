@@ -155,6 +155,32 @@ function M.detect_sources(root, opts)
   return sources
 end
 
+local function normalize_locale(locale)
+  return locale:lower():gsub("_", "-")
+end
+
+--- Best locale in `locales` for `wanted`: exact (case and `_`/`-` insensitive), base language, same language, first.
+function M.match_locale(wanted, locales)
+  local target = normalize_locale(wanted or "")
+  local base = target:match("^([^-]+)")
+  local same_language
+  for _, l in ipairs(locales) do
+    local n = normalize_locale(l)
+    if n == target then
+      return l
+    end
+  end
+  for _, l in ipairs(locales) do
+    local n = normalize_locale(l)
+    if n == base then
+      return l
+    elseif not same_language and n:match("^([^-]+)") == base then
+      same_language = l
+    end
+  end
+  return same_language or locales[1]
+end
+
 local Store = {}
 Store.__index = Store
 
@@ -185,15 +211,16 @@ function Store:scan_files()
     for l in pairs(found) do
       table.insert(locales, l)
     end
-    table.sort(locales, function(a, b)
-      if a == self.cfg.default_locale or b == self.cfg.default_locale then
-        return a == self.cfg.default_locale
-      end
-      return a < b
-    end)
+    table.sort(locales)
+  end
+  self.default_locale = M.match_locale(self.cfg.default_locale, locales)
+  for i, l in ipairs(locales) do
+    if l == self.default_locale then
+      table.insert(locales, 1, table.remove(locales, i))
+      break
+    end
   end
   self.locales = locales
-  self.default_locale = vim.tbl_contains(locales, self.cfg.default_locale) and self.cfg.default_locale or locales[1]
   self.data, self.pos, self.mtime, self.loaded = {}, {}, {}, {}
 end
 

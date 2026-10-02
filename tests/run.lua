@@ -241,5 +241,326 @@ test("usages parses rg --json matches", function()
   })
 end)
 
+-- default locale
+
+test("default_locale defaults to en-US and falls back to the base language", function()
+  eq(config.defaults.default_locale, "en-US")
+  eq(store_for("vue").default_locale, "en")
+end)
+
+test("en-US is picked and listed first when present", function()
+  local store = store_for("enus")
+  eq(store.default_locale, "en-US")
+  eq(store.locales, { "en-US", "cmn", "fr" })
+end)
+
+test("locale matching ignores case and underscores", function()
+  local store = store_for("underscore")
+  eq(store.default_locale, "en_US")
+  eq(store.locales[1], "en_US")
+end)
+
+test("an explicit locales list still puts the default first", function()
+  local store = store_for("vue", { locales = { "fr", "en" } })
+  eq(store.locales, { "en", "fr" })
+end)
+
+-- replace / set
+
+local function tmp_project(files, opts)
+  local root = vim.fn.tempname()
+  vim.fn.mkdir(root .. "/locales", "p")
+  vim.fn.writefile({ "{}" }, root .. "/package.json")
+  for locale, lines in pairs(files) do
+    vim.fn.writefile(lines, root .. "/locales/" .. locale .. ".json")
+  end
+  config.setup(vim.tbl_deep_extend("force", { root_markers = { "package.json" } }, opts or {}))
+  local cfg = config.for_root(root)
+  local store = store_mod.new(root, cfg)
+  for _, l in ipairs(store.locales) do
+    store:ensure(l)
+  end
+  return {
+    root = root,
+    cfg = cfg,
+    store = store,
+    compiled = scanner.compile(cfg.functions, cfg.patterns),
+    locale = store.default_locale,
+    enabled = true,
+  }
+end
+
+local nested = {
+  "{",
+  '  "a": {',
+  '    "b": "Old / é",',
+  '    "c": "C"',
+  "  },",
+  '  "obj": {',
+  '    "x": "X"',
+  "  }",
+  "}",
+}
+
+test("replace swaps the value and keeps comma, indentation, UTF-8 and slashes", function()
+  local out = assert(edit.replace(nested, "a.b", 'New "quoted" / ü'))
+  eq(out[3], '    "b": "New \\"quoted\\" / ü",')
+  eq(out[4], '    "c": "C"')
+  out = assert(edit.replace(nested, "a.c", "C2"))
+  eq(out[4], '    "c": "C2"')
+end)
+
+test("replace refuses objects and missing keys", function()
+  eq(select(2, edit.replace(nested, "obj", "x")), "'obj' is not a string")
+  eq(select(2, edit.replace(nested, "a.zzz", "x")), "key not found")
+end)
+
+test("set updates existing values, adds missing locales and skips empty ones", function()
+  local p = tmp_project({
+    en = { "{", '  "k": "Key"', "}" },
+    fr = { "{", '  "other": "Autre"', "}" },
+    de = { "{", '  "k": "Schlüssel"', "}" },
+  })
+  local written, errors = edit.set(p.store, "k", { en = "Key 2", fr = "Clé", de = "" })
+  eq(#written, 2)
+  eq(errors, {})
+  eq(read(p.root .. "/locales/en.json"), { "{", '  "k": "Key 2"', "}", "" })
+  eq(read(p.root .. "/locales/fr.json"), { "{", '  "other": "Autre",', '  "k": "Clé"', "}", "" })
+  eq(p.store:get("k", "de"), "Schlüssel")
+  eq(p.store:get("k", "fr"), "Clé")
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("key_in_json finds the dotted key on the cursor line, with the namespace", function()
+  local navigation = require("i18n-ts.navigation")
+  local store = store_for("vue")
+  vim.cmd.edit(fixtures .. "/vue/src/locales/en.json")
+  vim.api.nvim_win_set_cursor(0, { 6, 0 })
+  eq(navigation.key_in_json(0, store), "common.actions.cancel")
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+  eq(navigation.key_in_json(0, store), "common")
+  store = store_for("i18next", { namespace_separator = ":" })
+  vim.cmd.edit(fixtures .. "/i18next/public/locales/en/common.json")
+  vim.api.nvim_win_set_cursor(0, { 4, 0 })
+  eq(navigation.key_in_json(0, store), "common:nested.deep")
+  vim.cmd("silent! %bwipeout!")
+end)
+
+-- editor
+
+local editor = require("i18n-ts.editor")
+
+test("editor lists every locale, default first, and writes the changed lines", function()
+  local p = tmp_project({
+    en = { "{", '  "k": "Line\\nbreak"', "}" },
+    fr = { "{", '  "k": "Ligne"', "}" },
+    de = { "{", "}" },
+  })
+  local buf = editor.open(p, "k")
+  eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "Line\\nbreak", "", "Ligne" })
+  eq(editor.locales(buf), { "en", "de", "fr" })
+  vim.api.nvim_buf_set_lines(buf, 1, 3, false, { "Zeile", "Ligne 2" })
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  eq(vim.bo[buf].modified, false)
+  eq(p.store:get("k", "de"), "Zeile")
+  eq(p.store:get("k", "fr"), "Ligne 2")
+  eq(p.store:get("k", "en"), "Line\nbreak")
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("editor refuses a write when lines were added or removed", function()
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", '  "k": "Kf"', "}" } })
+  local buf = editor.open(p, "k")
+  vim.api.nvim_buf_set_lines(buf, 2, 2, false, { "extra" })
+  local ok = pcall(vim.api.nvim_buf_call, buf, function()
+    vim.cmd("write")
+  end)
+  eq(vim.bo[buf].modified, true)
+  eq(p.store:get("k", "fr"), "Kf")
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+  assert(ok ~= nil)
+end)
+
+test("editor machine-translates the empty locales from the default one", function()
+  local requests = {}
+  local p = tmp_project({
+    en = { "{", "}" },
+    fr = { "{", "}" },
+    de = { "{", "}" },
+  }, {
+    translate = {
+      provider = function(req, cb)
+        table.insert(requests, req)
+        cb(nil, { fr = "Bonjour", de = "Hallo" })
+      end,
+    },
+  })
+  local buf = editor.open(p, "greet")
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Hello" })
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  assert(vim.wait(2000, function()
+    return p.store:get("greet", "de") ~= nil
+  end))
+  eq(requests[1], { key = "greet", source_locale = "en", source = "Hello", targets = { "de", "fr" } })
+  eq(p.store:get("greet", "fr"), "Bonjour")
+  eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "Hello", "Hallo", "Bonjour" })
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("editor does not translate when the default locale is empty", function()
+  local called = false
+  local p = tmp_project({ en = { "{", "}" }, fr = { "{", "}" } }, {
+    translate = {
+      provider = function(_, cb)
+        called = true
+        cb(nil, {})
+      end,
+    },
+  })
+  local buf = editor.open(p, "k")
+  vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Seulement fr" })
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  vim.wait(100)
+  eq(called, false)
+  eq(p.store:get("k", "fr"), "Seulement fr")
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+-- translate
+
+local translate = require("i18n-ts.translate")
+local req = { key = "common.save", source_locale = "en-US", source = "Save {count}", targets = { "fr", "de" } }
+
+local function with_runner(responses, fn)
+  local calls = {}
+  local original = translate.runner
+  translate.runner = function(cmd, opts, on_exit)
+    local body
+    for _, arg in ipairs(cmd) do
+      if arg:sub(1, 1) == "@" then
+        body = table.concat(read(arg:sub(2)), "\n")
+      end
+    end
+    table.insert(calls, { cmd = cmd, opts = opts, body = body })
+    local r = table.remove(responses, 1)
+    on_exit({ code = 0, stdout = r, stderr = "" })
+  end
+  local ok, err = pcall(fn, calls)
+  translate.runner = original
+  assert(ok, err)
+end
+
+local function run_sync(cfg, request)
+  local done, err, result = false, nil, nil
+  translate.run(cfg, request, function(e, r)
+    done, err, result = true, e, r
+  end)
+  assert(
+    vim.wait(3000, function()
+      return done
+    end),
+    "translate callback never ran"
+  )
+  return err, result
+end
+
+local anthropic_cfg =
+  vim.tbl_deep_extend("force", config.defaults.translate, { provider = "anthropic", retry_delay_ms = 1 })
+
+local function api_response(code, body, retry_after)
+  return vim.json.encode(body) .. "\n" .. code .. " " .. (retry_after or "")
+end
+
+test("anthropic request: light model, schema with the targets, no effort, key kept out of argv", function()
+  vim.env.I18N_TS_TEST_KEY = "sk-test-secret"
+  local cfg = vim.tbl_deep_extend("force", anthropic_cfg, { anthropic = { api_key_env = "I18N_TS_TEST_KEY" } })
+  local text = vim.json.encode({ fr = "Enregistrer {count}", de = "Speichern {count}" })
+  with_runner({
+    api_response(200, { stop_reason = "end_turn", content = { { type = "text", text = text } } }),
+  }, function(calls)
+    local err, result = run_sync(cfg, req)
+    eq(err, nil)
+    eq(result, { fr = "Enregistrer {count}", de = "Speichern {count}" })
+    local call = calls[1]
+    assert(not table.concat(call.cmd, " "):find("sk-test-secret", 1, true), "API key leaked into argv")
+    assert(call.opts.stdin:find("x-api-key: sk-test-secret", 1, true), "API key missing from curl stdin config")
+    local body = vim.json.decode(call.body)
+    eq(body.model, "claude-haiku-4-5")
+    eq(body.output_config.effort, nil)
+    eq(body.thinking, nil)
+    eq(body.output_config.format.schema.required, { "fr", "de" })
+    eq(body.output_config.format.schema.additionalProperties, false)
+  end)
+  vim.env.I18N_TS_TEST_KEY = nil
+end)
+
+test("anthropic errors: refusal, max_tokens, invalid key, missing key", function()
+  vim.env.I18N_TS_TEST_KEY = "k"
+  local cfg = vim.tbl_deep_extend("force", anthropic_cfg, { anthropic = { api_key_env = "I18N_TS_TEST_KEY" } })
+  with_runner({
+    api_response(200, { stop_reason = "refusal", content = {} }),
+    api_response(200, { stop_reason = "max_tokens", content = {} }),
+    api_response(401, { type = "error", error = { message = "invalid x-api-key" } }),
+  }, function()
+    assert(run_sync(cfg, req):find("refused", 1, true))
+    assert(run_sync(cfg, req):find("max_tokens", 1, true))
+    assert(run_sync(cfg, req):find("I18N_TS_TEST_KEY", 1, true))
+  end)
+  vim.env.I18N_TS_TEST_KEY = nil
+  assert(run_sync(cfg, req):find("I18N_TS_TEST_KEY is not set", 1, true))
+end)
+
+test("anthropic retries once on 429 then succeeds", function()
+  vim.env.I18N_TS_TEST_KEY = "k"
+  local cfg = vim.tbl_deep_extend("force", anthropic_cfg, { anthropic = { api_key_env = "I18N_TS_TEST_KEY" } })
+  with_runner({
+    api_response(429, { type = "error", error = { message = "rate limited" } }, "0"),
+    api_response(200, { stop_reason = "end_turn", content = { { type = "text", text = '{"fr":"A","de":"B"}' } } }),
+  }, function(calls)
+    local err, result = run_sync(cfg, req)
+    eq(err, nil)
+    eq(result.fr, "A")
+    eq(#calls, 2)
+  end)
+  vim.env.I18N_TS_TEST_KEY = nil
+end)
+
+test("command provider gets the request on stdin and returns its JSON", function()
+  local stdin_file = vim.fn.tempname()
+  vim.env.I18N_TS_TEST_STDIN = stdin_file
+  local cfg = vim.tbl_deep_extend("force", config.defaults.translate, {
+    provider = "command",
+    command = { "sh", fixtures .. "/translate.sh" },
+  })
+  local err, result = run_sync(cfg, req)
+  eq(err, nil)
+  eq(result, { fr = "Bonjour", de = "Hallo" })
+  eq(vim.json.decode(table.concat(read(stdin_file), "\n")), req)
+  vim.fn.delete(stdin_file)
+  vim.env.I18N_TS_TEST_STDIN = nil
+end)
+
+test(".i18n-ts.json cannot configure translation", function()
+  local root = vim.fn.tempname()
+  vim.fn.mkdir(root, "p")
+  vim.fn.writefile(
+    { '{ "translate": { "provider": "command", "command": ["rm", "-rf", "/"] } }' },
+    root .. "/.i18n-ts.json"
+  )
+  config.setup({})
+  eq(config.for_root(root).translate.provider, nil)
+  vim.fn.delete(root, "rf")
+end)
+
 print(("\n%d tests, %d failure(s)"):format(count, failures))
 os.exit(failures == 0 and 0 or 1)

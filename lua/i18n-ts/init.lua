@@ -137,6 +137,7 @@ function M.setup(opts)
   M.projects = {}
   vim.api.nvim_set_hl(0, "I18nTsTranslation", { link = "Comment", default = true })
   vim.api.nvim_set_hl(0, "I18nTsMissing", { link = "DiagnosticWarn", default = true })
+  vim.api.nvim_set_hl(0, "I18nTsLocale", { link = "Label", default = true })
   vim.api.nvim_clear_autocmds({ group = group })
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
@@ -290,6 +291,12 @@ M.subcommands = {
   end,
   add = function(arg)
     require("i18n-ts.navigation").add(arg)
+  end,
+  edit = function(arg)
+    require("i18n-ts.navigation").edit(arg)
+  end,
+  translate = function(arg)
+    require("i18n-ts.navigation").translate(arg)
   end,
   usages = function(arg)
     require("i18n-ts.usages").find(arg)

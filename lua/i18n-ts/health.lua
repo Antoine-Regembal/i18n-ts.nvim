@@ -36,6 +36,33 @@ function M.check()
   for path, err in pairs(store.errors) do
     h.error(vim.fn.fnamemodify(path, ":~:.") .. ": " .. err)
   end
+
+  h.start("i18n-ts: machine translation")
+  local t = project.cfg.translate
+  if not t.provider then
+    h.info("off (set translate.provider to enable it)")
+    return
+  end
+  h.info(
+    ("provider: %s, source locale: %s, auto: %s"):format(
+      require("i18n-ts.translate").label(t),
+      tostring(store.default_locale),
+      tostring(t.auto)
+    )
+  )
+  local env = (t.provider == "anthropic" and t.anthropic.api_key_env) or (t.provider == "deepl" and t.deepl.api_key_env)
+  if env then
+    if vim.env[env] and vim.env[env] ~= "" then
+      h.ok(env .. " is set")
+    else
+      h.error(env .. " is not set")
+    end
+    if vim.fn.executable("curl") == 1 then
+      h.ok("curl found")
+    else
+      h.error("curl is required for the " .. t.provider .. " provider")
+    end
+  end
 end
 
 return M

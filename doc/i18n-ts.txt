@@ -56,11 +56,28 @@ Run `:checkhealth i18n-ts` to see what was detected.
 :I18n def               Jump to the key under the cursor.
 :I18n show              Float with the key in every locale.
 :I18n next              Display the next locale.
-:I18n keys              Key picker. <CR> jumps, <C-y> yanks, <A-i> inserts.
+:I18n keys              Key picker. <CR> jumps, <C-e> edits, <C-y> yanks,
+                        <A-i> inserts.
+:I18n edit [key]        Edit the key in every locale, see |i18n-ts-editor|.
+:I18n translate [key]   Machine-translate the missing locales of a key.
 :I18n add [key]         Add a key to every locale file.
 :I18n usages [key]      Usages of a key (ripgrep).
 :I18n toggle            Hide / show translations and diagnostics.
 :I18n reload            Re-read configuration and translation files.
+
+                                                              *i18n-ts-editor*
+The editor float has one line per locale, the default locale first, and each
+line holds only the value. `:w` saves the changed lines and adds the filled-in
+missing locales, <CR> saves and closes, `q` cancels. Emptied lines are left
+unchanged. Newlines in values are shown as `\n`. Adding or removing lines is
+refused.
+
+                                                           *i18n-ts-translate*
+With `translate.provider` set ("anthropic", "deepl", "command" or a Lua
+function), writing the editor also fills the locales still empty, translated
+from the default locale. The source text is sent to the provider. API keys are
+read from the environment variable named by `api_key_env`, and passed to curl
+on stdin. `translate` cannot be set from `.i18n-ts.json`.
 
                                                         *i18n-ts.definition()*
 require("i18n-ts").definition()
@@ -81,5 +98,6 @@ Keys are offered only inside a translation call.
 
 I18nTsTranslation       Inline translation. Links to |hl-Comment|.
 I18nTsMissing           Links to DiagnosticWarn.
+I18nTsLocale            Locale labels in the editor. Links to |hl-Label|.
 
  vim:tw=78:ts=8:ft=help:norl:

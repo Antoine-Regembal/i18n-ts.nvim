@@ -52,6 +52,61 @@ function M.show()
   vim.lsp.util.open_floating_preview(lines, "markdown", { border = "rounded", focus_id = "i18n-ts" })
 end
 
+--- Key defined on the cursor line when `buf` is one of the project's translation files.
+function M.key_in_json(buf, store)
+  buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
+  local path = vim.fs.normalize(vim.api.nvim_buf_get_name(buf))
+  local file = store.by_path[path]
+  if not file then
+    return nil
+  end
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  local positions = require("i18n-ts.store").index_json(vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+  for key, pos in pairs(positions) do
+    if pos[1] == row then
+      return store:key_for(file, key)
+    end
+  end
+end
+
+local function resolve_key(arg)
+  if arg and arg ~= "" then
+    return arg, i18n.require_project()
+  end
+  local key, project = i18n.key_at_cursor()
+  if key then
+    return key, project
+  end
+  project = i18n.project(0)
+  if project then
+    return M.key_in_json(0, project.store), project
+  end
+end
+
+--- Opens the editor float on a key: argument, call under the cursor, or key line in a translation file.
+function M.edit(arg)
+  local key, project = resolve_key(arg)
+  if not project then
+    return
+  end
+  if not key then
+    return notify("no translation key under the cursor", vim.log.levels.WARN)
+  end
+  require("i18n-ts.editor").open(project, key)
+end
+
+--- Machine-translates every missing locale of a key from the default locale.
+function M.translate(arg)
+  local key, project = resolve_key(arg)
+  if not project then
+    return
+  end
+  if not key then
+    return notify("no translation key under the cursor", vim.log.levels.WARN)
+  end
+  require("i18n-ts.editor").translate_key(project, key)
+end
+
 local function prompt_values(store, key, cb)
   local cfg = store.cfg.add
   local values, i = {}, 0
