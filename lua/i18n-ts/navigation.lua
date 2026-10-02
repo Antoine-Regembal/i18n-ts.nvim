@@ -107,6 +107,51 @@ function M.translate(arg)
   require("i18n-ts.editor").translate_key(project, key)
 end
 
+--- Deletes a key from every locale after confirmation, warning when the code still uses it.
+---@param opts? { check_usages?: boolean }
+function M.remove(arg, project, opts)
+  opts = opts or {}
+  local key = arg
+  if not project then
+    key, project = resolve_key(arg)
+  end
+  if not project then
+    return
+  end
+  if not key or key == "" then
+    return notify("no translation key under the cursor", vim.log.levels.WARN)
+  end
+  local edit = require("i18n-ts.edit")
+  local count = #edit.files_with(project.store, key)
+  if count == 0 then
+    return notify(("'%s' is not defined in any locale file"):format(key), vim.log.levels.WARN)
+  end
+  local function confirm(usage_count)
+    local prompt = ("Remove '%s' from %d locale file%s?"):format(key, count, count > 1 and "s" or "")
+    if usage_count and usage_count > 0 then
+      prompt = prompt .. (" It is still used in %d place%s."):format(usage_count, usage_count > 1 and "s" or "")
+    end
+    vim.ui.select({ "Remove", "Cancel" }, { prompt = prompt }, function(choice)
+      if choice ~= "Remove" then
+        return
+      end
+      local removed, errors = edit.remove(project.store, key, { prune = project.cfg.remove.prune_empty })
+      i18n.refresh_project(project)
+      local msg = ("removed '%s' from %d file(s)"):format(key, #removed)
+      for locale, err in pairs(errors) do
+        msg = msg .. ("\n%s: %s"):format(locale, err)
+      end
+      notify(msg, next(errors) and vim.log.levels.WARN or vim.log.levels.INFO)
+    end)
+  end
+  if opts.check_usages == false or vim.fn.executable("rg") ~= 1 then
+    return confirm(nil)
+  end
+  require("i18n-ts.usages").search(project, key, function(err, locations)
+    confirm(not err and #locations or nil)
+  end)
+end
+
 local function prompt_values(store, key, cb)
   local cfg = store.cfg.add
   local values, i = {}, 0

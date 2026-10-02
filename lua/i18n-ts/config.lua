@@ -42,6 +42,10 @@ M.defaults = {
     -- Formatter run on the written files, e.g. { "npx", "prettier", "--write" }. Never read from project files.
     format_cmd = nil,
   },
+  remove = {
+    -- Also delete parent objects left empty by `:I18n remove`.
+    prune_empty = true,
+  },
   -- Fills empty locales from the default one. Sends the source text to the provider; never read from project files.
   translate = {
     -- nil (off), "claude_code", "anthropic", "deepl", "command", or fun(request, callback)

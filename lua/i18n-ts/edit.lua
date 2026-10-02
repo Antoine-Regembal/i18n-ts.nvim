@@ -113,6 +113,64 @@ function M.replace(lines, key, value)
   return out
 end
 
+local function only_blank(lines, from, to)
+  for i = from, to do
+    if not lines[i]:match("^%s*$") then
+      return false
+    end
+  end
+  return true
+end
+
+--- Returns `lines` without `key` (a value or a whole object), fixing commas.
+--- Parents left empty are removed too unless `opts.prune` is false.
+---@return string[]|nil lines, string|nil err
+function M.delete(lines, key, opts)
+  opts = opts or {}
+  local positions, objects = store_mod.index_json(lines)
+  local pos = positions[key]
+  if not pos then
+    return nil, "key not found"
+  end
+  local first = pos[1]
+  local last = objects[key] and objects[key].close or first
+  if not last then
+    return nil, ("cannot find the end of '%s'"):format(key)
+  end
+  local parent_path = key:match("^(.*)%.[^.]*$") or ""
+  if not objects[parent_path] then
+    parent_path = ""
+  end
+  local parent = objects[parent_path]
+
+  local out = vim.list_slice(lines, 1, #lines)
+  local was_last = not out[last]:match(",%s*$")
+  for _ = first, last do
+    table.remove(out, first)
+  end
+  if was_last then
+    local prev = first - 1
+    while prev > parent.open and out[prev]:match("^%s*$") do
+      prev = prev - 1
+    end
+    if prev > parent.open then
+      out[prev] = out[prev]:gsub(",(%s*)$", "%1")
+    end
+  end
+  if not pcall(vim.json.decode, table.concat(out, "\n")) then
+    return nil, "result would not be valid JSON"
+  end
+
+  if opts.prune ~= false and parent_path ~= "" then
+    local _, after = store_mod.index_json(out)
+    local p = after[parent_path]
+    if p and p.close and only_blank(out, p.open + 1, p.close - 1) then
+      return M.delete(out, parent_path, opts)
+    end
+  end
+  return out
+end
+
 local function read_lines(path)
   local bufnr = vim.fn.bufnr(path)
   if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
@@ -191,6 +249,45 @@ end
 --- Adds `key` to every locale given in `values`; existing keys are reported as errors.
 function M.add(store, key, values)
   return apply(store, key, values, { update = false })
+end
+
+--- Locale files that define `key` (as a value or an object), in locale order.
+function M.files_with(store, key)
+  local files = {}
+  for _, locale in ipairs(store.locales) do
+    local file, rel = store:target(key, locale)
+    if file then
+      local lines = read_lines(file.path)
+      if lines and store_mod.index_json(lines)[rel] then
+        table.insert(files, { locale = locale, file = file, rel = rel })
+      end
+    end
+  end
+  return files
+end
+
+--- Deletes `key` from every locale file that has it; returns removed paths and per-locale errors.
+function M.remove(store, key, opts)
+  local removed, errors = {}, {}
+  for _, entry in ipairs(M.files_with(store, key)) do
+    local lines, bufnr = read_lines(entry.file.path)
+    if not lines then
+      errors[entry.locale] = vim.fn.fnamemodify(entry.file.path, ":~:.") .. " " .. bufnr
+    else
+      local out, err = M.delete(lines, entry.rel, opts)
+      if not out then
+        errors[entry.locale] = err
+      elseif write_lines(entry.file.path, out, bufnr) then
+        table.insert(removed, entry.file.path)
+      else
+        errors[entry.locale] = "write failed"
+      end
+    end
+  end
+  for _, path in ipairs(removed) do
+    store:reload_path(path)
+  end
+  return removed, errors
 end
 
 --- Sets `key` to `values[locale]`: replaces existing values, adds missing ones, skips empty or unchanged ones.

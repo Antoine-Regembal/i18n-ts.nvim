@@ -56,11 +56,14 @@ Run `:checkhealth i18n-ts` to see what was detected.
 :I18n def               Jump to the key under the cursor.
 :I18n show              Float with the key in every locale.
 :I18n next              Display the next locale.
-:I18n keys              Key picker. <CR> jumps, <C-e> edits, <C-y> yanks,
-                        <A-i> inserts.
+:I18n keys              Key picker. <CR> jumps, <C-e> edits, <C-x> removes,
+                        <C-y> yanks, <A-i> inserts.
 :I18n edit [key]        Edit the key in every locale, see |i18n-ts-editor|.
 :I18n translate [key]   Machine-translate the missing locales of a key.
 :I18n add [key]         Add a key to every locale file.
+:I18n remove [key]      Delete a key (or an object) from every locale file,
+                        after confirmation. Warns when it is still used.
+                        Parents left empty are removed (`remove.prune_empty`).
 :I18n usages [key]      Usages of a key (ripgrep).
 :I18n toggle            Hide / show translations and diagnostics.
 :I18n reload            Re-read configuration and translation files.

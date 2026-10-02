@@ -13,6 +13,7 @@ See your translations where you use them. A fast, dependency-free Neovim plugin 
 - Edit a key in every locale from one float: one line per locale, the default locale first, `:w` to save
 - Machine-translate the empty locales from the default one (Claude Code with no API key, the Claude API, DeepL, your own command or Lua function)
 - Add a key to every locale file at once, keeping key order and indentation
+- Remove a key from every locale file, with a warning when the code still uses it
 - Find the usages of a key with ripgrep
 - Zero config for the usual layouts: the project root and the translation files are detected
 
@@ -45,6 +46,7 @@ return {
       { "<leader>Ie", "<cmd>I18n edit<cr>", desc = "i18n: edit key" },
       { "<leader>IT", "<cmd>I18n translate<cr>", desc = "i18n: translate missing locales" },
       { "<leader>Ia", "<cmd>I18n add<cr>", desc = "i18n: add key" },
+      { "<leader>Ix", "<cmd>I18n remove<cr>", desc = "i18n: remove key" },
       { "<leader>Iu", "<cmd>I18n usages<cr>", desc = "i18n: usages" },
       { "<leader>It", "<cmd>I18n toggle<cr>", desc = "i18n: toggle" },
       {
@@ -137,6 +139,9 @@ require("i18n-ts").setup({
     prompt = "all", -- "all": ask a value per locale; "default": reuse the default locale's value
     format_cmd = nil, -- e.g. { "npx", "prettier", "--write" }, run on the written files
   },
+  remove = {
+    prune_empty = true, -- also delete parent objects left empty
+  },
   translate = {
     provider = nil, -- nil (off), "claude_code", "anthropic", "deepl", "command", or function(request, callback)
     auto = true, -- translate the empty locales when the editor is written
@@ -209,10 +214,11 @@ opts = {
 | `:I18n def` | Jump to the key under the cursor in the displayed locale |
 | `:I18n show` | Float with the key in every locale |
 | `:I18n next` | Display the next locale |
-| `:I18n keys` | Picker: `<CR>` jumps, `<C-e>` edits, `<C-y>` yanks the key, `<A-i>` inserts it |
+| `:I18n keys` | Picker: `<CR>` jumps, `<C-e>` edits, `<C-x>` removes, `<C-y>` yanks the key, `<A-i>` inserts it |
 | `:I18n edit [key]` | Edit the key in every locale (see below); also works on a key line inside a translation file |
 | `:I18n translate [key]` | Machine-translate the key's missing locales from the default locale |
 | `:I18n add [key]` | Add the key (argument, or the one under the cursor) to every locale |
+| `:I18n remove [key]` | Delete the key (or a whole object) from every locale, after confirmation; warns when the code still uses it |
 | `:I18n usages [key]` | Usages of the key, translation files excluded |
 | `:I18n toggle` | Hide / show translations and diagnostics |
 | `:I18n reload` | Forget every project and re-read the configuration and files |

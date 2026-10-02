@@ -25,18 +25,11 @@ function M.parse(output)
   return locations
 end
 
---- Finds quoted occurrences of a key under the project root, translation files excluded.
-function M.find(key)
-  local project = i18n.require_project()
-  if not project then
-    return
-  end
-  key = (key and key ~= "") and key or i18n.key_at_cursor()
-  if not key then
-    return notify("no translation key under the cursor", vim.log.levels.WARN)
-  end
+--- Quoted occurrences of `key` under the project root, translation files excluded.
+--- `cb(err, locations)` runs on the main loop.
+function M.search(project, key, cb)
   if vim.fn.executable("rg") ~= 1 then
-    return notify("ripgrep (rg) is required for usages", vim.log.levels.ERROR)
+    return cb("ripgrep (rg) is required for usages")
   end
   local cmd = { "rg", "--json", "--fixed-strings" }
   for _, q in ipairs({ "'", '"', "`" }) do
@@ -49,17 +42,34 @@ function M.find(key)
   vim.system(cmd, { cwd = project.root, text = true }, function(res)
     vim.schedule(function()
       if res.code > 1 then
-        return notify("rg failed: " .. (res.stderr or ""), vim.log.levels.ERROR)
+        return cb("rg failed: " .. (res.stderr or ""))
       end
       local locations = M.parse(res.stdout or "")
       for _, l in ipairs(locations) do
         l.file = vim.fs.normalize(project.root .. "/" .. l.file:gsub("^%./", ""))
       end
-      if #locations == 0 then
-        return notify(("no usage of '%s'"):format(key))
-      end
-      require("i18n-ts.picker").locations(("usages of %s"):format(key), locations)
+      cb(nil, locations)
     end)
+  end)
+end
+
+function M.find(key)
+  local project = i18n.require_project()
+  if not project then
+    return
+  end
+  key = (key and key ~= "") and key or i18n.key_at_cursor()
+  if not key then
+    return notify("no translation key under the cursor", vim.log.levels.WARN)
+  end
+  M.search(project, key, function(err, locations)
+    if err then
+      return notify(err, vim.log.levels.ERROR)
+    end
+    if #locations == 0 then
+      return notify(("no usage of '%s'"):format(key))
+    end
+    require("i18n-ts.picker").locations(("usages of %s"):format(key), locations)
   end)
 end
 

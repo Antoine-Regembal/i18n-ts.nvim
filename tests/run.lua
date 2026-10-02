@@ -346,6 +346,119 @@ test("key_in_json finds the dotted key on the cursor line, with the namespace", 
   vim.cmd("silent! %bwipeout!")
 end)
 
+-- remove
+
+local tree = {
+  "{",
+  '  "a": {',
+  '    "b": "B",',
+  '    "c": "C"',
+  "  },",
+  '  "solo": {',
+  '    "only": "Only"',
+  "  },",
+  '  "last": "Last"',
+  "}",
+}
+
+test("delete removes a middle key and keeps the commas", function()
+  local out = assert(edit.delete(tree, "a.b"))
+  eq(vim.list_slice(out, 2, 4), { '  "a": {', '    "c": "C"', "  }," })
+end)
+
+test("delete removes the last key of an object and strips the previous comma", function()
+  local out = assert(edit.delete(tree, "a.c"))
+  eq(vim.list_slice(out, 2, 4), { '  "a": {', '    "b": "B"', "  }," })
+  out = assert(edit.delete(tree, "last"))
+  eq(vim.list_slice(out, #out - 1, #out), { "  }", "}" })
+end)
+
+test("delete prunes parents left empty, unless asked not to", function()
+  local out = assert(edit.delete(tree, "solo.only"))
+  eq(out, { "{", '  "a": {', '    "b": "B",', '    "c": "C"', "  },", '  "last": "Last"', "}" })
+  out = assert(edit.delete(tree, "solo.only", { prune = false }))
+  eq(vim.list_slice(out, 6, 7), { '  "solo": {', "  }," })
+  assert(pcall(vim.json.decode, table.concat(out, "\n")))
+end)
+
+test("delete removes a whole object and refuses missing keys", function()
+  local out = assert(edit.delete(tree, "a"))
+  eq(out[2], '  "solo": {')
+  eq(select(2, edit.delete(tree, "nope")), "key not found")
+end)
+
+test("remove deletes the key from every locale that has it", function()
+  local p = tmp_project({
+    en = { "{", '  "k": "K",', '  "keep": "Keep"', "}" },
+    fr = { "{", '  "keep": "Garder",', '  "k": "Kf"', "}" },
+    de = { "{", '  "keep": "Behalten"', "}" },
+  })
+  local removed, errors = edit.remove(p.store, "k")
+  eq(#removed, 2)
+  eq(errors, {})
+  eq(read(p.root .. "/locales/fr.json"), { "{", '  "keep": "Garder"', "}", "" })
+  eq(p.store:get("k", "en"), nil)
+  eq(p.store:get("keep", "en"), "Keep")
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("remove works with i18next namespaces", function()
+  local root = vim.fn.tempname()
+  vim.fn.mkdir(root .. "/locales/en", "p")
+  vim.fn.writefile({ "{}" }, root .. "/package.json")
+  vim.fn.writefile({ "{", '  "hello": "Hello",', '  "bye": "Bye"', "}" }, root .. "/locales/en/common.json")
+  config.setup({ root_markers = { "package.json" }, namespace_separator = ":" })
+  local store = store_mod.new(root, (config.for_root(root)))
+  local removed = edit.remove(store, "common:hello")
+  eq(#removed, 1)
+  eq(read(root .. "/locales/en/common.json"), { "{", '  "bye": "Bye"', "}", "" })
+  vim.fn.delete(root, "rf")
+end)
+
+test(":I18n remove asks for confirmation and does nothing when cancelled", function()
+  local navigation = require("i18n-ts.navigation")
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", '  "k": "Kf"', "}" } })
+  local prompts = {}
+  local original = vim.ui.select
+  vim.ui.select = function(items, opts, on_choice)
+    table.insert(prompts, opts.prompt)
+    on_choice(items[#items])
+  end
+  navigation.remove("k", p, { check_usages = false })
+  eq(p.store:get("k", "fr"), "Kf")
+  vim.ui.select = function(items, opts, on_choice)
+    table.insert(prompts, opts.prompt)
+    on_choice(items[1])
+  end
+  navigation.remove("k", p, { check_usages = false })
+  vim.ui.select = original
+  eq(prompts[1], "Remove 'k' from 2 locale files?")
+  eq(p.store:get("k", "fr"), nil)
+  eq(read(p.root .. "/locales/en.json"), { "{", "}", "" })
+  vim.fn.delete(p.root, "rf")
+end)
+
+test(":I18n remove warns when the key is still used in the code", function()
+  if vim.fn.executable("rg") ~= 1 then
+    print("     skipped: ripgrep is not installed, the usage warning needs it")
+    return
+  end
+  local store = store_for("vue")
+  local project = { root = fixtures .. "/vue", cfg = store.cfg, store = store, locale = "en", enabled = true }
+  local prompt
+  local original = vim.ui.select
+  vim.ui.select = function(items, opts, on_choice)
+    prompt = opts.prompt
+    on_choice(items[#items])
+  end
+  require("i18n-ts.navigation").remove("common.title", project)
+  assert(vim.wait(5000, function()
+    return prompt ~= nil
+  end))
+  vim.ui.select = original
+  eq(prompt, "Remove 'common.title' from 2 locale files? It is still used in 2 places.")
+end)
+
 -- editor
 
 local editor = require("i18n-ts.editor")
