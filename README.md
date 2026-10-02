@@ -57,31 +57,29 @@ Large projects stay fast: loading 13 locales of ~2,900 keys takes under 100 ms, 
 return {
   {
     "Antoine-Regembal/i18n-ts.nvim",
+    version = "*", -- releases only, not every commit on main
     event = { "BufReadPre", "BufNewFile" },
-    opts = {},
+    opts = {
+      -- Machine translation is off by default, see "Machine translation" to pick a provider:
+      -- translate = { provider = "claude_code" },
+    },
     keys = {
-      { "<leader>Ik", "<cmd>I18n keys<cr>", desc = "i18n: keys" },
-      { "<leader>Is", "<cmd>I18n show<cr>", desc = "i18n: all locales" },
-      { "<leader>In", "<cmd>I18n next<cr>", desc = "i18n: next locale" },
-      { "<leader>Ie", "<cmd>I18n edit<cr>", desc = "i18n: edit key" },
-      { "<leader>IT", "<cmd>I18n translate<cr>", desc = "i18n: translate missing locales" },
-      { "<leader>IR", "<cmd>I18n retranslate<cr>", desc = "i18n: re-translate all locales" },
-      { "<leader>Ia", "<cmd>I18n add<cr>", desc = "i18n: add key" },
-      { "<leader>Ix", "<cmd>I18n remove<cr>", desc = "i18n: remove key" },
-      { "<leader>Iu", "<cmd>I18n usages<cr>", desc = "i18n: usages" },
-      { "<leader>It", "<cmd>I18n toggle<cr>", desc = "i18n: toggle" },
-      {
-        "gd",
-        function()
-          if not require("i18n-ts").definition() then
-            vim.lsp.buf.definition()
-          end
-        end,
-        ft = { "vue", "typescript", "javascript", "typescriptreact", "javascriptreact", "svelte" },
-        desc = "Goto definition (i18n key or LSP)",
-      },
+      { "<leader>Ie", "<cmd>I18n edit<cr>", desc = "Edit key (all locales)" },
+      { "<leader>Is", "<cmd>I18n show<cr>", desc = "Show key in all locales" },
+      { "<leader>Ik", "<cmd>I18n keys<cr>", desc = "Search keys" },
+      { "<leader>Id", "<cmd>I18n def<cr>", desc = "Go to key definition" },
+      { "<leader>In", "<cmd>I18n next<cr>", desc = "Next displayed locale" },
+      { "<leader>IT", "<cmd>I18n translate<cr>", desc = "Translate missing locales" },
+      { "<leader>IR", "<cmd>I18n retranslate<cr>", desc = "Re-translate all locales" },
+      { "<leader>Ia", "<cmd>I18n add<cr>", desc = "Add key" },
+      { "<leader>Ix", "<cmd>I18n remove<cr>", desc = "Remove key" },
+      { "<leader>Iu", "<cmd>I18n usages<cr>", desc = "Key usages" },
+      { "<leader>It", "<cmd>I18n toggle<cr>", desc = "Toggle translations" },
+      { "<leader>Ii", "<cmd>I18n info<cr>", desc = "i18n info" },
     },
   },
+
+  -- Key completion inside t('…'), every locale in the documentation
   {
     "saghen/blink.cmp",
     optional = true,
@@ -92,19 +90,56 @@ return {
       },
     },
   },
+
+  -- "i18n" label for the <leader>I group
+  {
+    "folke/which-key.nvim",
+    optional = true,
+    opts = {
+      spec = { { "<leader>I", group = "i18n" } },
+    },
+  },
 }
 ```
+
+- **The blink.cmp and which-key.nvim blocks are optional extras.** Both plugins ship with LazyVim. `optional = true` means each block only applies when that plugin is installed, so leave both blocks in either way. LazyVim merges `sources.default` with its own list, so `lsp`, `path` and the others stay enabled.
+- **`<leader>I` is a suggestion;** any prefix works. linear.nvim, for example, uses `<leader>i`.
+- **Why no `gd` by default:** LazyVim sets `gd` for the language server when it attaches to a buffer, after the plugin's keys, so a plugin `gd` would be overridden. To make `gd` jump to the key under the cursor and fall back to the LSP elsewhere, add this to the first spec:
+
+  ```lua
+  init = function()
+    vim.api.nvim_create_autocmd("LspAttach", {
+      callback = function(args)
+        -- Scheduled so it runs after LazyVim's own LspAttach mappings
+        vim.schedule(function()
+          if not vim.api.nvim_buf_is_valid(args.buf) then
+            return
+          end
+          vim.keymap.set("n", "gd", function()
+            if not require("i18n-ts").definition() then
+              vim.lsp.buf.definition()
+            end
+          end, { buffer = args.buf, desc = "Go to definition (i18n key or LSP)" })
+        end)
+      end,
+    })
+  end,
+  ```
 
 </details>
 
 <details>
 <summary><b>Any other plugin manager</b></summary>
 
-Add `Antoine-Regembal/i18n-ts.nvim` to your runtime path and call:
+Add `Antoine-Regembal/i18n-ts.nvim` to your runtime path (pin the latest tag, e.g. `v0.1.0`), and call:
 
 ```lua
 require("i18n-ts").setup({})
+vim.keymap.set("n", "<leader>Ie", "<cmd>I18n edit<cr>", { desc = "Edit key (all locales)" })
+-- … the other :I18n commands, see "Commands"
 ```
+
+With blink.cmp, add the completion source to your blink config: `providers = { i18n = { name = "i18n", module = "i18n-ts.blink" } }`, and `"i18n"` in `sources.default`. which-key is not needed; it only labels the key group.
 
 </details>
 
