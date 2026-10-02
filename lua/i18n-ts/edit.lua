@@ -266,10 +266,19 @@ function M.files_with(store, key)
   return files
 end
 
---- Deletes `key` from every locale file that has it; returns removed paths and per-locale errors.
+--- Deletes `key` from every locale file that has it (or only `opts.locales`); returns removed paths and errors.
 function M.remove(store, key, opts)
+  opts = opts or {}
+  local only = opts.locales and {}
+  for _, l in ipairs(opts.locales or {}) do
+    only[l] = true
+  end
   local removed, errors = {}, {}
-  for _, entry in ipairs(M.files_with(store, key)) do
+  for _, entry in
+    ipairs(vim.tbl_filter(function(e)
+      return not only or only[e.locale]
+    end, M.files_with(store, key)))
+  do
     local lines, bufnr = read_lines(entry.file.path)
     if not lines then
       errors[entry.locale] = vim.fn.fnamemodify(entry.file.path, ":~:.") .. " " .. bufnr

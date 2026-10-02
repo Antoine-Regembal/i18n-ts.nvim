@@ -94,7 +94,7 @@ local function counts(s, buf)
     if not value then
       missing = missing + 1
     end
-    if lines[i] and lines[i] ~= "" and lines[i] ~= to_line(value) then
+    if lines[i] and lines[i] ~= to_line(value) then
       modified = modified + 1
     end
   end
@@ -128,7 +128,7 @@ local function decorate(buf)
     if job and vim.tbl_contains(job.targets, l) then
       table.insert(badges, { display.spinner[display.frame] .. " translating…", "I18nTsPending" })
     elseif line == "" and value then
-      table.insert(badges, { "○ emptied, kept on save", "Comment" })
+      table.insert(badges, { "✕ removed on save", "I18nTsRemoved" })
     elseif line == "" then
       table.insert(badges, { "○ missing", "I18nTsMissing" })
     end
@@ -363,7 +363,9 @@ local function translate_missing(project, key, buf, opts)
   if not tcfg.provider or (project.pending or {})[key] then
     return
   end
-  local targets = missing_locales(store, key)
+  local targets = vim.tbl_filter(function(l)
+    return not (opts.exclude or {})[l]
+  end, missing_locales(store, key))
   if #targets == 0 then
     return opts.quiet or notify(("'%s' is translated in every locale"):format(key))
   end
@@ -461,11 +463,23 @@ local function write(buf)
   if #lines ~= #s.locales then
     error(("i18n-ts: keep one line per locale (%d expected, %d found)"):format(#s.locales, #lines), 0)
   end
-  local values = {}
+  local store = s.project.store
+  local values, cleared = {}, {}
   for i, l in ipairs(s.locales) do
-    values[l] = from_line(lines[i])
+    if lines[i] == "" and store:get(s.key, l) then
+      table.insert(cleared, l)
+      s.cleared[l] = true
+    else
+      values[l] = from_line(lines[i])
+    end
   end
-  local written, errors = edit.set(s.project.store, s.key, values)
+  local written, errors = edit.set(store, s.key, values)
+  if #cleared > 0 then
+    local removed, remove_errors =
+      edit.remove(store, s.key, { locales = cleared, prune = s.project.cfg.remove.prune_empty })
+    vim.list_extend(written, removed)
+    errors = vim.tbl_extend("keep", errors, remove_errors)
+  end
   finish(s, written, errors, "saved")
   refill(buf)
 end
@@ -561,6 +575,7 @@ function M.open(project, key)
     I18nTsKey = "Special",
     I18nTsModified = "DiagnosticHint",
     I18nTsMissing = "DiagnosticWarn",
+    I18nTsRemoved = "DiagnosticError",
     I18nTsPending = "DiagnosticInfo",
     I18nTsDone = "DiagnosticOk",
     I18nTsTitleTag = "Search",
@@ -568,7 +583,7 @@ function M.open(project, key)
     vim.api.nvim_set_hl(0, group, { link = link, default = true })
   end
   local buf = vim.api.nvim_create_buf(false, true)
-  sessions[buf] = { project = project, key = key, locales = vim.deepcopy(store.locales), help = true }
+  sessions[buf] = { project = project, key = key, locales = vim.deepcopy(store.locales), help = true, cleared = {} }
   vim.bo[buf].buftype = "acwrite"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
@@ -613,7 +628,7 @@ function M.open(project, key)
       local s = sessions[buf]
       sessions[buf] = nil
       if s and s.project.cfg.translate.auto then
-        translate_missing(s.project, s.key, nil, { quiet = true })
+        translate_missing(s.project, s.key, nil, { quiet = true, exclude = s.cleared })
       end
     end,
   })

@@ -321,13 +321,13 @@ opts = {
 ╰──── 1 missing · 1 modified · Claude Code, claude-haiku-4-5 ───────╯
 ```
 
-The default locale is marked `★ … source`. Each line shows its state: `○ missing`, `● modified` (changed, not saved yet), `○ emptied, kept on save`, or `⠋ translating…`. The footer sums it up, with the translation provider, and the legend lists the keys. `?` hides the legend for a compact float, and shows it again. The legend leaves out the translation keys when no provider is set.
+The default locale is marked `★ … source`. Each line shows its state: `○ missing`, `● modified` (changed, not saved yet), `✕ removed on save` (emptied line), or `⠋ translating…`. The footer sums it up, with the translation provider, and the legend lists the keys. `?` hides the legend for a compact float, and shows it again. The legend leaves out the translation keys when no provider is set.
 
 Each line holds only the value: the locale label isn't text you can edit. The float keeps exactly one line per locale. Anything that would add or remove a line (`dd`, `ggdG`, `J`, a multi-line paste…) is rolled back at once, without losing your other edits, and `u` still undoes your earlier changes. Inside the float:
 
 | Key | Action |
 | --- | --- |
-| `dd` | Clear the value (yanked to the register) |
+| `dd` | Clear the value (yanked to the register): removed from that locale on save |
 | `<Tab>` / `<S-Tab>` | Next / previous locale (normal and insert mode) |
 | `<CR>` in insert mode | Next locale |
 | `o`, `O`, `J` | Disabled |
@@ -354,7 +354,7 @@ opts = {
 
 Special keys (`<C-t>`, `<Tab>`…) for moving and translating also work in insert mode; other keys (`gT`, `<leader>r`) work in normal mode. Avoid `<A-…>` keys: many terminals and window managers use them (Ghostty opens a new window on `Alt+t`).
 
-`:w` saves the changed lines and adds the locales you filled in. An emptied line is left unchanged: nothing is ever deleted. Newlines in values show as `\n`.
+`:w` saves the changed lines, adds the locales you filled in, and removes the value of every line you emptied (from that locale only; parents left empty are removed too, see `remove.prune_empty`). Closing the float then machine-translates the locales that are still empty, except the ones you just cleared. Newlines in values show as `\n`.
 
 With a translation provider set, **closing the float** (`<CR>`, `q`, `<Esc>`, `:q`…) fills every locale still empty in the files, translated from the saved default locale value. `:w` alone never translates, so you can save the default locale several times while you refine it. To translate without closing, press `<C-t>` (or run `:I18n translate` from the float). Locales that already have a value are kept, even if you change the default locale's text. When you did change it and want every locale to follow, use `gT` in the float or `:I18n retranslate`: after a confirmation, every other locale is re-translated from the default one. A locale you edit while the request runs is still left as you typed it.
 
@@ -605,6 +605,7 @@ Lua API: `require("i18n-ts").definition()` returns `false` when there is no key 
 | `I18nTsPending` | links to `DiagnosticInfo` (translation in progress) |
 | `I18nTsSource` | links to `Special` (default locale in the editor) |
 | `I18nTsModified` | links to `DiagnosticHint` (unsaved line in the editor) |
+| `I18nTsRemoved` | links to `DiagnosticError` (emptied line, removed on save) |
 | `I18nTsKey` | links to `Special` (keys in the editor legend) |
 | `I18nTsDone` | links to `DiagnosticOk` (every locale translated) |
 | `I18nTsTitleTag` | links to `Search` (the `i18n` tag in the editor title) |

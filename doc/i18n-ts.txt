@@ -88,7 +88,8 @@ so the float always has one line per locale.
     q <Esc>             Close without saving (empty locales are still
                         translated from the saved default value).
 
-Emptied lines are left unchanged. Newlines in values are shown as `\n`.
+Emptied lines remove that locale's value on save; closing does not re-translate
+them. Newlines in values are shown as `\n`.
 
                                                          *i18n-ts-editor-keys*
 Every key but `:w` is set by `editor.keys` (save_close, close, next, prev,
@@ -154,6 +155,7 @@ I18nTsLocale            Locale labels in the editor. Links to |hl-Label|.
 I18nTsPending           Translation in progress. Links to DiagnosticInfo.
 I18nTsSource            Default locale in the editor. Links to |hl-Special|.
 I18nTsModified          Unsaved line in the editor. Links to DiagnosticHint.
+I18nTsRemoved           Emptied line, removed on save. Links to DiagnosticError.
 I18nTsKey               Keys in the editor legend. Links to |hl-Special|.
 I18nTsDone              Every locale translated. Links to DiagnosticOk.
 I18nTsTitleTag          `i18n` tag in the editor title. Links to |hl-Search|.

@@ -933,9 +933,77 @@ test("badges and footer follow the edits live", function()
   vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "" })
   vim.wait(30)
   ui = float_ui(buf)
-  assert(ui.badges[2]:find("emptied, kept on save", 1, true), vim.inspect(ui.badges))
-  eq(ui.footer:find("modified", 1, true), nil)
+  assert(ui.badges[2]:find("removed on save", 1, true), vim.inspect(ui.badges))
+  assert(ui.footer:find("1 modified", 1, true), ui.footer)
   editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("emptying a line and saving removes that locale's value only", function()
+  local p = tmp_project({
+    en = { "{", '  "cart": {', '    "k": "K",', '    "other": "O"', "  }", "}" },
+    fr = { "{", '  "cart": {', '    "k": "Kf"', "  }", "}" },
+    de = { "{", '  "cart": {', '    "k": "Kd"', "  }", "}" },
+  })
+  local buf = editor.open(p, "cart.k")
+  local locales = editor.locales(buf)
+  for i, l in ipairs(locales) do
+    if l == "fr" then
+      vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { "" })
+    end
+  end
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  eq(p.store:get("cart.k", "fr"), nil)
+  eq(p.store:get("cart.k", "de"), "Kd")
+  eq(p.store:get("cart.k", "en"), "K")
+  eq(read(p.root .. "/locales/fr.json"), { "{", "}", "" })
+  eq(vim.bo[buf].modified, false)
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("dd then :w removes the value too", function()
+  local p = tmp_project({ en = { "{", '  "k": "K"', "}" }, fr = { "{", '  "k": "Kf",', '  "x": "X"', "}" } })
+  local buf = editor.open(p, "k")
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+  vim.cmd("normal dd")
+  vim.cmd("write")
+  eq(read(p.root .. "/locales/fr.json"), { "{", '  "x": "X"', "}", "" })
+  editor.close(buf)
+  vim.fn.delete(p.root, "rf")
+end)
+
+test("closing does not re-translate a locale cleared in the float", function()
+  local requests = {}
+  local p = tmp_project({
+    en = { "{", '  "k": "K"', "}" },
+    fr = { "{", '  "k": "Kf"', "}" },
+    de = { "{", "}" },
+  }, {
+    translate = {
+      provider = function(req, cb)
+        table.insert(requests, req)
+        cb(nil, { de = "Kd", fr = "Kf again" })
+      end,
+    },
+  })
+  local buf = editor.open(p, "k")
+  for i, l in ipairs(editor.locales(buf)) do
+    if l == "fr" then
+      vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { "" })
+    end
+  end
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("write")
+  end)
+  editor.close(buf)
+  assert(vim.wait(2000, function()
+    return p.store:get("k", "de") ~= nil
+  end))
+  eq(requests[1].targets, { "de" })
+  eq(p.store:get("k", "fr"), nil)
   vim.fn.delete(p.root, "rf")
 end)
 
