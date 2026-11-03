@@ -56,8 +56,8 @@ Run `:checkhealth i18n-ts` to see what was detected.
 :I18n def               Jump to the key under the cursor.
 :I18n show              Float with the key in every locale.
 :I18n next              Display the next locale.
-:I18n keys              Key picker. <CR> jumps, <C-e> edits, <C-x> removes,
-                        <C-y> yanks, <A-i> inserts.
+:I18n keys              Key picker, ignoring case and accents. <CR> jumps,
+                        <C-e> edits, <C-x> removes, <C-y> yanks, <A-i> inserts.
 :I18n edit [key]        Edit the key in every locale, see |i18n-ts-editor|.
 :I18n translate [key]   Machine-translate the missing locales of a key.
 :I18n retranslate [key] Re-translate every locale of a key from the default

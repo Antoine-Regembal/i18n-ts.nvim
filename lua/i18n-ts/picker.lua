@@ -1,15 +1,18 @@
 local i18n = require("i18n-ts")
 local display = require("i18n-ts.display")
+local text = require("i18n-ts.text")
 
 local M = {}
 
-local function items(project)
+function M.items(project)
   local store = project.store
   local list = {}
   for _, key in ipairs(store:keys(project.locale)) do
     local pos = store:position(key, project.locale)
+    local raw = key .. " " .. store:get(key, project.locale)
+    local folded = text.fold(raw)
     table.insert(list, {
-      text = key .. " " .. store:get(key, project.locale),
+      text = folded == raw and raw or raw .. " " .. folded,
       key = key,
       value = display.format(store:get(key, project.locale), 80),
       file = pos and pos.path,
@@ -29,12 +32,13 @@ function M.keys()
   if not project then
     return
   end
-  local list = items(project)
+  local list = M.items(project)
   local ok, snacks = pcall(require, "snacks")
   if ok and snacks.picker then
-    snacks.picker.pick({
+    local picker = snacks.picker.pick({
       title = ("i18n keys (%s)"):format(project.locale),
       items = list,
+      matcher = { ignorecase = true, smartcase = false },
       format = function(item)
         return { { item.key, "Identifier" }, { "  " }, { item.value, "I18nTsTranslation" } }
       end,
@@ -79,6 +83,13 @@ function M.keys()
         },
       },
     })
+    local matcher = picker and picker.matcher
+    if matcher and type(matcher.init) == "function" then
+      local init = matcher.init
+      matcher.init = function(self, pattern)
+        return init(self, text.fold(pattern))
+      end
+    end
     return
   end
   vim.ui.select(list, {

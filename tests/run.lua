@@ -1421,5 +1421,41 @@ test(".i18n-ts.json cannot configure translation", function()
   vim.fn.delete(root, "rf")
 end)
 
+-- search
+
+local text = require("i18n-ts.text")
+
+test("fold lowercases and strips accents", function()
+  eq(text.fold("Créer un Élément à côté"), "creer un element a cote")
+  eq(text.fold("CRÉER"), "creer")
+  eq(text.fold("Œuvre ça, Straße"), "oeuvre ca, strasse")
+end)
+
+test("fold keeps non-Latin characters and query prefixes", function()
+  eq(text.fold("日本 🎉"), "日本 🎉")
+  eq(text.fold("'^common.save$ !x_y"), "'^common.save$ !x_y")
+end)
+
+test("key picker items are searchable without accents", function()
+  local values = { ["patient.create"] = "Créer un patient", ["common.ok"] = "ok" }
+  local project = {
+    locale = "fr",
+    store = {
+      keys = function()
+        return { "common.ok", "patient.create" }
+      end,
+      get = function(_, key)
+        return values[key]
+      end,
+      position = function()
+        return nil
+      end,
+    },
+  }
+  local list = require("i18n-ts.picker").items(project)
+  eq(list[1].text, "common.ok ok")
+  eq(list[2].text, "patient.create Créer un patient patient.create creer un patient")
+end)
+
 print(("\n%d tests, %d failure(s)"):format(count, failures))
 os.exit(failures == 0 and 0 or 1)
