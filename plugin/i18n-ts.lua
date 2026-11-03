@@ -15,13 +15,19 @@ end, {
   nargs = "*",
   desc = "i18n-ts",
   complete = function(arg, line)
-    if #vim.split(line, "%s+", { trimempty = true }) > (arg == "" and 1 or 2) then
+    local words = vim.split(line, "%s+", { trimempty = true })
+    local position = #words + (arg == "" and 1 or 0)
+    local candidates
+    if position == 2 then
+      candidates = vim.tbl_keys(require("i18n-ts").subcommands)
+      table.sort(candidates)
+    elseif position == 3 and words[2] == "locale" then
+      candidates = require("i18n-ts").locales()
+    else
       return {}
     end
-    local subs = vim.tbl_keys(require("i18n-ts").subcommands)
-    table.sort(subs)
     return vim.tbl_filter(function(s)
       return s:find(arg, 1, true) == 1
-    end, subs)
+    end, candidates)
   end,
 })

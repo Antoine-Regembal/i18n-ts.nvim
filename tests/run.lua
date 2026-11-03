@@ -1421,6 +1421,43 @@ test(".i18n-ts.json cannot configure translation", function()
   vim.fn.delete(root, "rf")
 end)
 
+-- displayed locale
+
+test(":I18n locale picks the displayed locale from a list", function()
+  local store = store_for("vue")
+  local project = { root = fixtures .. "/vue", cfg = store.cfg, store = store, locale = "en", enabled = true }
+  local shown
+  local original = vim.ui.select
+  vim.ui.select = function(items, opts, on_choice)
+    shown = vim.tbl_map(opts.format_item, items)
+    on_choice(items[2])
+  end
+  require("i18n-ts").set_locale(nil, project)
+  vim.ui.select = original
+  eq(shown, { "en  (showing, default)", "fr" })
+  eq(project.locale, "fr")
+end)
+
+test(":I18n locale <name> matches case and region, and refuses unknown locales", function()
+  local i18n = require("i18n-ts")
+  local store = store_for("vue")
+  local project = { root = fixtures .. "/vue", cfg = store.cfg, store = store, locale = "en", enabled = true }
+  i18n.set_locale("FR_ca", project)
+  eq(project.locale, "fr")
+  i18n.set_locale("de", project)
+  eq(project.locale, "fr")
+end)
+
+test(":I18n locale completes the project's locales", function()
+  store_for("vue")
+  vim.cmd.runtime("plugin/i18n-ts.lua")
+  vim.cmd.edit(fixtures .. "/vue/src/locales/en.json")
+  eq(vim.fn.getcompletion("I18n locale ", "cmdline"), { "en", "fr" })
+  eq(vim.fn.getcompletion("I18n locale f", "cmdline"), { "fr" })
+  eq(vim.tbl_contains(vim.fn.getcompletion("I18n loc", "cmdline"), "locale"), true)
+  vim.cmd("silent! %bwipeout!")
+end)
+
 -- search
 
 local text = require("i18n-ts.text")

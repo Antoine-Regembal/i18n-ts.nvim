@@ -68,7 +68,7 @@ return {
       { "<leader>Is", "<cmd>I18n show<cr>", desc = "Show key in all locales" },
       { "<leader>Ik", "<cmd>I18n keys<cr>", desc = "Search keys" },
       { "<leader>Id", "<cmd>I18n def<cr>", desc = "Go to key definition" },
-      { "<leader>In", "<cmd>I18n next<cr>", desc = "Next displayed locale" },
+      { "<leader>Il", "<cmd>I18n locale<cr>", desc = "Pick displayed locale" },
       { "<leader>IT", "<cmd>I18n translate<cr>", desc = "Translate missing locales" },
       { "<leader>IR", "<cmd>I18n retranslate<cr>", desc = "Re-translate all locales" },
       { "<leader>Ia", "<cmd>I18n add<cr>", desc = "Add key" },
@@ -292,6 +292,7 @@ opts = {
 | `:I18n` / `:I18n info` | Root, sources, locales, key count, load errors |
 | `:I18n def` | Jump to the key under the cursor in the displayed locale |
 | `:I18n show` | Float with the key in every locale |
+| `:I18n locale [locale]` | Display a locale: picked from a list, or given directly (`fr` matches `fr-FR`, `<Tab>` completes) |
 | `:I18n next` | Display the next locale |
 | `:I18n keys` | Picker, ignoring case and accents (`creer` finds "Créer"): `<CR>` jumps, `<C-e>` edits, `<C-x>` removes, `<C-y>` yanks the key, `<A-i>` inserts it |
 | `:I18n edit [key]` | Edit the key in every locale (see below); also works on a key line inside a translation file |

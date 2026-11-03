@@ -244,6 +244,12 @@ function M.definition()
   return require("i18n-ts.navigation").definition()
 end
 
+local function show_locale(project, locale)
+  project.locale = locale
+  M.refresh_project(project)
+  notify("showing " .. locale)
+end
+
 function M.next_locale()
   local project = M.require_project()
   if not project then
@@ -256,9 +262,55 @@ function M.next_locale()
       idx = i
     end
   end
-  project.locale = locales[idx % #locales + 1]
-  M.refresh_project(project)
-  notify("showing " .. project.locale)
+  show_locale(project, locales[idx % #locales + 1])
+end
+
+local function language(locale)
+  return (locale:lower():gsub("_", "-"):match("^[^-]+"))
+end
+
+--- Displays `locale` (case and `_`/`-` insensitive, `fr` matches `fr-FR`); without it, picks one from a list.
+function M.set_locale(locale, project)
+  project = project or M.require_project()
+  if not project then
+    return
+  end
+  local store = project.store
+  if not locale or locale == "" then
+    vim.ui.select(store.locales, {
+      prompt = "Displayed locale",
+      format_item = function(l)
+        local tags = {}
+        if l == project.locale then
+          table.insert(tags, "showing")
+        end
+        if l == store.default_locale then
+          table.insert(tags, "default")
+        end
+        return #tags > 0 and ("%s  (%s)"):format(l, table.concat(tags, ", ")) or l
+      end,
+    }, function(choice)
+      if choice then
+        show_locale(project, choice)
+      end
+    end)
+    return
+  end
+  local found = store_mod.match_locale(locale, store.locales)
+  if not found or language(found) ~= language(locale) then
+    notify(
+      ("unknown locale '%s', available: %s"):format(locale, table.concat(store.locales, ", ")),
+      vim.log.levels.WARN
+    )
+    return
+  end
+  show_locale(project, found)
+end
+
+--- Locales of the current buffer's project, for command completion.
+function M.locales()
+  local project = attached[vim.api.nvim_get_current_buf()] or M.project(0)
+  return project and project.store.locales or {}
 end
 
 function M.toggle()
@@ -333,6 +385,9 @@ M.subcommands = {
     require("i18n-ts.navigation").show()
   end,
   next = M.next_locale,
+  locale = function(arg)
+    M.set_locale(arg)
+  end,
   keys = function()
     require("i18n-ts.picker").keys()
   end,
