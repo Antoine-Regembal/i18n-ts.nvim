@@ -26,7 +26,7 @@ local function insert_key(key)
   vim.api.nvim_put({ key }, "c", true, true)
 end
 
---- Searches keys and translations of the displayed locale. <CR> jumps, <C-e> edits, <C-x> removes, <C-y> yanks, <A-i> inserts the key.
+--- Searches keys and translations of the displayed locale. <CR> jumps, <C-e> edits, <C-x> removes, <C-y> yanks, <A-i> inserts the key, <A-u> lists its usages.
 function M.keys()
   local project = i18n.require_project()
   if not project then
@@ -65,6 +65,12 @@ function M.keys()
             require("i18n-ts.navigation").remove(item.key, project)
           end)
         end,
+        i18n_usages = function(picker, item)
+          picker:close()
+          vim.schedule(function()
+            require("i18n-ts.usages").find(item.key)
+          end)
+        end,
         i18n_insert = function(picker, item)
           picker:close()
           vim.schedule(function()
@@ -79,6 +85,7 @@ function M.keys()
             ["<a-i>"] = { "i18n_insert", mode = { "n", "i" } },
             ["<c-e>"] = { "i18n_edit", mode = { "n", "i" } },
             ["<c-x>"] = { "i18n_remove", mode = { "n", "i" } },
+            ["<a-u>"] = { "i18n_usages", mode = { "n", "i" } },
           },
         },
       },

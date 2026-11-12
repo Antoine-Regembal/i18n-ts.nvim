@@ -294,7 +294,7 @@ opts = {
 | `:I18n show` | Float with the key in every locale |
 | `:I18n locale [locale]` | Display a locale: picked from a list, or given directly (`fr` matches `fr-FR`, `<Tab>` completes) |
 | `:I18n next` | Display the next locale |
-| `:I18n keys` | Picker, ignoring case and accents (`creer` finds "Créer"): `<CR>` jumps, `<C-e>` edits, `<C-x>` removes, `<C-y>` yanks the key, `<A-i>` inserts it |
+| `:I18n keys` | Picker, ignoring case and accents (`creer` finds "Créer"): `<CR>` jumps, `<C-e>` edits, `<C-x>` removes, `<C-y>` yanks the key, `<A-i>` inserts it, `<A-u>` lists the files using it |
 | `:I18n edit [key]` | Edit the key in every locale (see below); also works on a key line inside a translation file |
 | `:I18n translate [key]` | Machine-translate the key's missing locales from the default locale (inside the editor float: save, then translate now) |
 | `:I18n retranslate [key]` | Re-translate every locale of the key from the default one, replacing existing values, after confirmation |
